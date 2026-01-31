@@ -27,6 +27,7 @@ ENV/
 *.swp
 *.swo
 *~
+*.code-workspace
 
 # 日志文件
 *.log
