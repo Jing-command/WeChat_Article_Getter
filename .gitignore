@@ -11,6 +11,11 @@ __pycache__/
 *.pyd
 .Python
 
+# PyInstaller打包文件
+build/
+dist/
+*.spec
+
 # 虚拟环境
 venv/
 env/
