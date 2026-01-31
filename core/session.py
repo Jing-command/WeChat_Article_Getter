@@ -2,6 +2,7 @@ import json
 import time
 import os
 import re
+import requests
 from config import Config
 from utils.browser import BrowserFactory
 
@@ -44,15 +45,51 @@ class SessionManager:
             json.dump(data, f)
         print("[INFO]会话已保存到本地")
 
+    def check_cookies_validity(self):
+        """验证当前 Cookies 和 Token 是否有效"""
+        if not self.cookies or not self.token:
+            return False
+        
+        # 构造一个轻量级的请求来测试连通性
+        headers = {
+            "User-Agent": Config.USER_AGENT,
+            "Referer": Config.BASE_URL
+        }
+        params = {
+            "action": "search_biz",
+            "token": self.token,
+            "lang": "zh_CN",
+            "f": "json",
+            "ajax": "1",
+            "query": "official_account", # 随便搜个常用词
+            "begin": "0",
+            "count": "1"
+        }
+        
+        try:
+            resp = requests.get(Config.SEARCH_URL, cookies=self.cookies, headers=headers, params=params)
+            data = resp.json()
+            if data.get("base_resp", {}).get("ret") == 0:
+                return True
+            else:
+                print(f"[WARN] 验证会话失效: {data.get('base_resp')}")
+                return False
+        except Exception as e:
+            print(f"[WARN] 验证会话出错: {e}")
+            return False
+
     def login(self):
         """执行登录流程（优先复用本地会话，失败则扫码）"""
         # 1. 尝试使用本地 Cookie 和 Token
         if self.load_cookies():
-            # 这里简化处理：只要本地有数据就认为有效并直接返回
-            # 实际生产中应发送一个测试请求来验证 Session 是否过期
-            print("[INFO] 尝试复用会话...")
-            return self.cookies, self.token
-
+            # 验证 Cookies 是否有效
+            print("[INFO] 正在验证本地会话有效性...")
+            if self.check_cookies_validity():
+                print("[INFO] 会话有效，直接复用")
+                return self.cookies, self.token
+            else:
+                print("[INFO] 会话已过期，需要重新登录")
+        
         # 2. 本地无有效会话，启动浏览器进行扫码登录
         print("[INFO] 启动浏览器进行扫码登录...")
         # 调用工厂方法初始化防检测浏览器

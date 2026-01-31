@@ -2,14 +2,33 @@ import requests
 import random
 import time
 import json
+import os
+import re
+import html
+from bs4 import BeautifulSoup
 from config import Config
+import yt_dlp
+import imageio_ffmpeg
 
 class CrawlerEngine:
-    def __init__(self, cookies, token):
+    def __init__(self, cookies, token, output_dir=None):
+        """
+        初始化爬虫引擎
+        :param cookies: 登录后的cookies
+        :param token: 微信公众平台接口调用token
+        :param output_dir: 自定义输出目录，如果为None则使用配置文件中的默认目录
+        """
         # 保存会话需要的 Cookies
         self.cookies = cookies
         # 保存接口调用需要的 Token
         self.token = token
+        # 设置输出目录
+        self.output_dir = output_dir if output_dir else Config.HTML_DIR
+        # 确保输出目录存在
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+            print(f"[INFO] 已创建输出目录: {self.output_dir}")
+        
         # 设置通用的请求头，包含 User-Agent 和 Referer
         self.headers = {
             "User-Agent": Config.USER_AGENT,
@@ -34,7 +53,7 @@ class CrawlerEngine:
             "ajax": "1",             # 异步请求标识
             "query": nickname,       # 搜索关键词
             "begin": "0",            # 起始页码
-            "count": "5"             # 每页数量
+            "count": "3"             # 每页数量
         }
         
         # 请求前随机休眠
@@ -61,35 +80,47 @@ class CrawlerEngine:
             return None
 
     def get_articles(self, fakeid, count=5):
-        """根据 FakeID 获取公众号的文章列表"""
+        """根据 FakeID 获取公众号的文章列表（支持分页）"""
         print(f"[CRAWL] 开始抓取文章...")
-        # 构造获取文章列表的参数
-        params = {
-            "token": self.token,
-            "lang": "zh_CN",
-            "f": "json",
-            "ajax": "1",
-            "action": "list_ex",  # 动作：获取文章列表
-            "begin": "0",         # 起始位置（翻页用）
-            "count": str(count),  # 获取数量
-            "query": "",
-            "fakeid": fakeid,     # 目标公众号 ID
-            "type": "9"           # 类型: 9 代表图文消息
-        }
-        
-        # 请求前随机休眠
-        self._random_sleep()
-        # 发送 GET 请求
-        resp = requests.get(Config.APPMSG_URL, cookies=self.cookies, headers=self.headers, params=params)
-        data = resp.json()
-        
-        # 检查响应状态
-        if data.get("base_resp", {}).get("ret") != 0:
-            print(f"[ERROR] 获取文章失败: {data}")
-            return []
-            
-        # 解析并返回数据
-        return self._parse_articles(data)
+
+        results = []
+        begin = 0
+        # 微信接口单次返回数量常有上限，采用分页抓取
+        while len(results) < count:
+            batch_count = min(5, count - len(results))
+            params = {
+                "token": self.token,
+                "lang": "zh_CN",
+                "f": "json",
+                "ajax": "1",
+                "action": "list_ex",  # 动作：获取文章列表
+                "begin": str(begin),   # 起始位置（翻页用）
+                "count": str(batch_count),  # 获取数量（单次）
+                "query": "",
+                "fakeid": fakeid,     # 目标公众号 ID
+                "type": "9"           # 类型: 9 代表图文消息
+            }
+
+            self._random_sleep()
+            resp = requests.get(Config.APPMSG_URL, cookies=self.cookies, headers=self.headers, params=params)
+            data = resp.json()
+
+            if data.get("base_resp", {}).get("ret") != 0:
+                print(f"[ERROR] 获取文章失败: {data}")
+                break
+
+            batch = self._parse_articles(data)
+            if not batch:
+                break
+
+            results.extend(batch)
+            begin += len(batch)
+
+            # 如果返回数量小于本次请求，说明已到末尾
+            if len(batch) < batch_count:
+                break
+
+        return results[:count]
 
     def _parse_articles(self, data):
         """清洗原始 JSON 数据，提取关键字段"""
@@ -102,17 +133,482 @@ class CrawlerEngine:
                 "link": msg.get("link"),     # 文章链接
                 # 将时间戳转换为可读的时间格式
                 "create_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(msg.get("create_time"))),
+                "create_timestamp": msg.get("create_time"),  # 保留原始时间戳用于日期过滤
                 "digest": msg.get("digest")  # 文章摘要
             }
             results.append(item)
         return results
+    
+    def get_articles_by_date(self, fakeid, start_date, end_date):
+        """根据日期范围获取公众号文章"""
+        from datetime import datetime
+        
+        print(f"[CRAWL] 开始按日期范围抓取文章: {start_date} 至 {end_date}")
+        
+        # 转换日期字符串为时间戳
+        start_ts = int(datetime.strptime(start_date, '%Y-%m-%d').timestamp())
+        end_ts = int(datetime.strptime(end_date + ' 23:59:59', '%Y-%m-%d %H:%M:%S').timestamp())
+        
+        results = []
+        begin = 0
+        max_fetch = 500  # 最多获取500篇（防止无限循环）
+        found_older = False  # 标记是否找到更早的文章
+        
+        # 持续获取直到超出日期范围
+        while begin < max_fetch:
+            batch_count = 5
+            params = {
+                "token": self.token,
+                "lang": "zh_CN",
+                "f": "json",
+                "ajax": "1",
+                "action": "list_ex",
+                "begin": str(begin),
+                "count": str(batch_count),
+                "query": "",
+                "fakeid": fakeid,
+                "type": "9"
+            }
 
-    def save_results(self, articles):
-        """将抓取结果保存到 JSON 文件"""
-        if not articles:
-            return
+            self._random_sleep()
+            resp = requests.get(Config.APPMSG_URL, cookies=self.cookies, headers=self.headers, params=params)
+            data = resp.json()
+
+            if data.get("base_resp", {}).get("ret") != 0:
+                print(f"[ERROR] 获取文章失败: {data}")
+                break
+
+            batch = self._parse_articles(data)
+            if not batch:
+                print(f"[INFO] 没有更多文章了")
+                break
+
+            # 过滤日期范围内的文章
+            for article in batch:
+                ts = article.get("create_timestamp", 0)
+                if start_ts <= ts <= end_ts:
+                    results.append(article)
+                elif ts < start_ts:
+                    # 标记找到了更早的文章
+                    found_older = True
+
+            begin += len(batch)
             
-        # 这里使用 ensure_ascii=False 保证中文字符正常显示
-        with open(Config.RESULT_FILE, 'w', encoding='utf-8') as f:
-            json.dump(articles, f, ensure_ascii=False, indent=4)
-        print(f"[SAVE] 已保存 {len(articles)} 篇文章到 {Config.RESULT_FILE}")
+            # 如果这一批全部都早于开始日期，说明后续都更早，可以停止
+            if found_older and all(a.get("create_timestamp", 0) < start_ts for a in batch):
+                print(f"[INFO] 已到达日期范围之前的文章，停止获取")
+                break
+            
+            # 如果返回数量小于请求数量，说明已到末尾
+            if len(batch) < batch_count:
+                print(f"[INFO] 已获取所有文章")
+                break
+        
+        print(f"[INFO] 在指定日期范围内找到 {len(results)} 篇文章")
+        return results
+    
+    def fetch_article_metadata(self, url):
+        """获取单个文章的元数据(主要是标题)"""
+        print(f"[INFO] 正在解析链接: {url}")
+        try:
+            headers = self.headers.copy()
+            # 简单的请求获取标题
+            resp = requests.get(url, headers=headers, timeout=10)
+            if resp.status_code != 200:
+                print(f"[ERROR] 无法访问链接，状态码: {resp.status_code}")
+                return None
+            
+            resp.encoding = 'utf-8' # 微信通常是utf-8
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            
+            # 尝试获取标题
+            # 微信文章通常在 og:title meta中，或者 id="activity-name"
+            title = None
+            
+            # 方法1: meta og:title
+            og_title = soup.find('meta', property='og:title')
+            if og_title:
+                title = og_title.get('content')
+                
+            # 方法2: id="activity-name"
+            if not title:
+                activity_name = soup.find(id="activity-name")
+                if activity_name:
+                    title = activity_name.get_text(strip=True)
+                    
+            # 方法3: title 标签
+            if not title and soup.title:
+                title = soup.title.string
+                
+            if not title:
+                title = f"未命名文章_{int(time.time())}"
+                
+            return {
+                "title": title,
+                "link": url,
+                "create_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "digest": ""
+            }
+            
+        except Exception as e:
+            print(f"[ERROR] 解析链接失败: {e}")
+            return None
+    
+    def extract_fakeid_from_url(self, url):
+        """从微信文章URL中提取公众号的fakeid"""
+        print(f"[INFO] 正在从URL提取公众号信息...")
+        try:
+            # 方法1: 从URL参数中提取__biz
+            # 微信文章URL格式: https://mp.weixin.qq.com/s?__biz=MzA...&mid=...
+            biz_match = re.search(r'__biz=([^&]+)', url)
+            if not biz_match:
+                print("[WARN] 无法从URL中提取__biz参数")
+                return None
+            
+            biz = biz_match.group(1)
+            print(f"[INFO] 提取到__biz: {biz[:20]}...")
+            
+            # 方法2: 通过搜索接口查找该公众号
+            # 先获取文章标题，然后通过文章内容找到公众号名称
+            headers = self.headers.copy()
+            resp = requests.get(url, headers=headers, timeout=10)
+            if resp.status_code != 200:
+                print(f"[ERROR] 无法访问链接")
+                return None
+            
+            resp.encoding = 'utf-8'
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            
+            # 提取公众号名称
+            account_name = None
+            
+            # 方法A: id="js_name"
+            js_name = soup.find(id="js_name")
+            if js_name:
+                account_name = js_name.get_text(strip=True)
+            
+            # 方法B: meta property="og:article:author"
+            if not account_name:
+                og_author = soup.find('meta', property='og:article:author')
+                if og_author:
+                    account_name = og_author.get('content')
+            
+            # 方法C: class="rich_media_meta rich_media_meta_nickname"
+            if not account_name:
+                meta_nickname = soup.find(class_="rich_media_meta_nickname")
+                if meta_nickname:
+                    account_name = meta_nickname.get_text(strip=True)
+                    
+            if not account_name:
+                print("[ERROR] 无法从文章页面提取公众号名称")
+                return None
+            
+            print(f"[INFO] 识别到公众号: {account_name}")
+            
+            # 通过名称搜索获取fakeid
+            fakeid = self.search_account(account_name)
+            
+            return fakeid
+            
+        except Exception as e:
+            print(f"[ERROR] 提取公众号信息失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def _sanitize_filename(self, filename):
+        """处理文件名中的非法字符"""
+        return re.sub(r'[\\/:*?"<>|]', '_', filename).strip()
+
+    def _download_videos_for_html(self, soup, save_folder_name, article_url):
+        """
+        处理文章中的视频：
+        识别所有视频 (视频号、公众号视频、Iframe) -> 替换为提示文本 (不下载)
+        """
+        
+        # 定义一个通用的替换函数
+        def replace_with_notice(tag, text="【视频无法下载】"):
+            if not tag: return
+            msg_div = soup.new_tag("div")
+            msg_div['style'] = (
+                "padding: 20px; text-align: center; background-color: #f0f0f0; "
+                "color: #666; border: 1px dashed #999; margin: 10px 0; font-size: 14px;"
+            )
+            msg_div.string = text
+            tag.replace_with(msg_div)
+
+        # 1. 视频号 (Channels/Finder)
+        channels_tags = []
+        channels_tags.extend(soup.find_all('mp-common-videosnap'))
+        channels_tags.extend(soup.find_all(class_='js_wechannel_video_card'))
+        channels_tags.extend(soup.find_all(class_="js_finder_card"))
+        channels_tags.extend(soup.find_all(attrs={"data-finder-feed-id": True}))
+        
+        # 去重
+        seen_ids = set()
+        for tag in channels_tags:
+            if id(tag) not in seen_ids:
+                replace_with_notice(tag, "【视频号视频不支持下载】")
+                seen_ids.add(id(tag))
+
+        # 2. 公众号视频 (mp-video)
+        mp_videos = soup.find_all('mp-video')
+        for tag in mp_videos:
+             replace_with_notice(tag, "【文章内嵌视频不支持下载】")
+
+        # 3. Iframe 视频
+        for iframe in soup.find_all('iframe'):
+            src = iframe.get('data-src') or iframe.get('src') or ""
+            classes = iframe.get('class') or []
+            if isinstance(classes, str): classes = [classes]
+            
+            is_video = False
+            if 'video_iframe' in classes:
+                is_video = True
+            elif any(d in src for d in Config.VIDEO_DOMAINS):
+                is_video = True
+            elif iframe.has_attr('data-vid') or iframe.has_attr('data-mpvid'):
+                is_video = True
+                
+            if is_video:
+                replace_with_notice(iframe, "【文章内嵌视频不支持下载】")
+
+        print(f"    [VIDEO] 已跳过所有视频下载，替换为提示文本")                    
+        return True
+           
+
+    def _download_with_ytdlp(self, url, save_path):
+        try:
+            ydl_opts = {
+                'outtmpl': save_path,
+                'quiet': True,
+                'no_warnings': True,
+                'http_headers': {"User-Agent": Config.VIDEO_USER_AGENT},
+                'ffmpeg_location': imageio_ffmpeg.get_ffmpeg_exe()
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+            return True
+        except:
+            return False
+
+    def _download_images_for_html(self, html_content, save_folder_name, article_url):
+        """解析HTML，下载图片并替换链接，同时清理无用脚本和外部资源"""
+        soup = BeautifulSoup(html_content, 'html.parser')
+
+        # 1. 下载并处理视频 (新增)
+        # 注意：这必须在移除 iframe 之前执行
+        self._download_videos_for_html(soup, save_folder_name, article_url)
+
+        # 2. 移除所有 script 标签，防止JS阻塞
+        for script in soup.find_all('script'):
+            script.decompose()
+
+        # 3. 移除剩余的 iframe (视频组件)，因为断网无法加载且会拖慢速度
+        # 已经处理过的 iframe 已经被 video 标签替换了，这里移除的是其他的（如广告、特定插件）
+        for iframe in soup.find_all('iframe'):
+            iframe.decompose()
+
+        # 3. 处理外部 CSS 链接
+        # 策略：尝试下载 CSS 内容并内嵌到 HTML 中，如果下载失败则移除链接，防止转圈
+        css_links = soup.find_all('link', rel='stylesheet')
+        print(f"    [CSS] 发现 {len(css_links)} 个外部CSS，尝试本地化...")
+        
+        for link in css_links:
+            href = link.get('href')
+            if not href:
+                link.decompose()
+                continue
+            
+            # 修复无协议头的 URL (如 //res.wx.qq.com...)
+            if href.startswith('//'):
+                href = 'https:' + href
+                
+            try:
+                # 尝试下载 CSS 内容
+                headers_css = self.headers.copy()
+                headers_css['Accept'] = 'text/css,*/*;q=0.1'
+                res = requests.get(href, headers=headers_css, timeout=5)
+                
+                if res.status_code == 200:
+                    # 创建新的 style 标签
+                    new_style = soup.new_tag("style")
+                    new_style.string = res.text
+                    # 插入到 head 中
+                    if not soup.head:
+                        soup.insert(0, soup.new_tag("head"))
+                    soup.head.append(new_style)
+                    print(f"    [CSS] 成功内嵌: {href[:30]}...")
+                else:
+                    print(f"    [WARN] CSS下载失败 {res.status_code}: {href[:30]}...")
+            except Exception as e:
+                print(f"    [WARN] CSS处理出错: {e}")
+            
+            # 无论是否下载成功，都移除原 link 标签，防止浏览器再次请求导致转圈
+            link.decompose()
+            
+        # 4. 保留内联样式，但处理 visibility 问题
+        # 微信文章正文 div 带有 style="visibility: hidden;"，需要覆盖它
+        # 移除 onerror 防止循环报错
+        for tag in soup.find_all(True):
+            if tag.has_attr('onerror'):
+                del tag['onerror']
+            # 注意：此处不再删除 style 属性，以保留文章原本的排版（颜色、字体等）
+        
+        # 5. 注入覆盖样式，强制显示内容
+        # 使用 !important 覆盖掉内联样式中的 visibility: hidden
+        style_content = """
+        <style>
+            /* 强制覆盖微信的隐藏逻辑，但保留其他内联样式 */
+            .rich_media_area_primary_inner, #js_content, body, .rich_media_content {
+                visibility: visible !important;
+                opacity: 1 !important;
+            }
+            /* 修复可能的图片显示问题 */
+            img { 
+                max-width: 100% !important; 
+                height: auto !important; 
+            }
+             /* 隐藏原本需要JS加载的 loading 提示 */
+            #js_loading { display: none !important; }
+            
+            body { 
+                font-family: -apple-system, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
+                line-height: 1.8; 
+                padding: 20px; 
+                background-color: #f6f6f6;
+                color: #333;
+            }
+            /* 模拟微信文章容器 */
+            #js_content, #img-content, .rich_media_area_primary_inner { 
+                max-width: 677px; /* 微信经典宽度 */
+                margin: 0 auto; 
+                background-color: #fff; 
+                padding: 40px;
+                border: 1px solid #e7e7eb;
+            }
+            /* 标题样式 */
+            .rich_media_title {
+                font-size: 22px;
+                font-weight: 700;
+                margin-bottom: 20px;
+                line-height: 1.4;
+            }
+            /* 图片样式 */
+            img { 
+                max-width: 100% !important; 
+                height: auto !important; 
+                display: block; 
+                margin: 20px auto; 
+                border-radius: 4px;
+            }
+            /* 段落 */
+            p {
+                margin-bottom: 1.5em;
+                text-align: justify;
+                font-size: 16px;
+            }
+        </style>
+        """ 
+        # 插入 meta charset
+        if not soup.head.find("meta", attrs={"charset": True}):
+            meta_charset = soup.new_tag("meta", charset="utf-8")
+            soup.head.insert(0, meta_charset)
+            
+        # 插入自定义样式
+        soup.head.append(BeautifulSoup(style_content, 'html.parser'))
+        
+        # 创建该文章对应的图片存放目录
+        # 结构: output_dir/文章标题_files/
+        images_dir_rel = f"{save_folder_name}_files"
+        # 使用实例的output_dir而不是Config.HTML_DIR
+        images_dir_abs = os.path.join(self.output_dir, images_dir_rel)
+        
+        if not os.path.exists(images_dir_abs):
+            os.makedirs(images_dir_abs)
+            
+        # 查找所有图片标签
+        imgs = soup.find_all('img')
+        print(f"    [IMG] 发现 {len(imgs)} 张图片，开始下载...")
+        
+        for idx, img in enumerate(imgs):
+            # 获取图片链接 (微信通常放在 data-src 中)
+            img_url = img.get('data-src')
+            if not img_url:
+                continue
+                
+            # 获取图片格式 (data-type)
+            img_type = img.get('data-type', 'jpg')
+            # 简单的格式修正
+            if img_type == 'jpeg': img_type = 'jpg'
+            if img_type == 'png': img_type = 'png'
+            if img_type == 'gif': img_type = 'gif'
+            
+            # 生成本地文件名 (自增序号)
+            img_filename = f"{idx}_{int(time.time())}.{img_type}"
+            img_path_abs = os.path.join(images_dir_abs, img_filename)
+            
+            try:
+                # 下载图片
+                # 注意：这里不需要 random_sleep，因为图片资源服务器通常没有严格频率限制，且图片很多，sleep太慢
+                # 但为了安全起见，可以极其微小的sleep或者不做
+                res = requests.get(img_url, headers=self.headers, timeout=10)
+                if res.status_code == 200:
+                    with open(img_path_abs, 'wb') as f:
+                        f.write(res.content)
+                    
+                    # 修改 HTML 中的标签
+                    # 将 data-src 和 src 都指向本地相对路径
+                    # 相对路径应该是: ./文章标题_files/图片名.jpg
+                    local_src = f"./{images_dir_rel}/{img_filename}"
+                    img['src'] = local_src
+                    img['data-src'] = local_src # 覆盖 data-src 以防 JS 再次修改
+                else:
+                   print(f"    [WARN] 图片下载失败 Status {res.status_code}: {img_url[:30]}...")
+            except Exception as e:
+                print(f"    [WARN] 图片下载出错: {e}")
+                
+        return str(soup)
+
+    def download_articles_content(self, articles):
+        """下载文章HTML内容到本地"""
+        print(f"[DOWNLOAD] 开始下载 {len(articles)} 篇文章的HTML内容...")
+        for i, article in enumerate(articles):
+            url = article['link']
+            title = article['title']
+            
+            # 简单的防重名处理
+            safe_title = self._sanitize_filename(title)
+            file_name = f"{safe_title}.html"
+            # 使用实例的output_dir而不是Config.HTML_DIR
+            file_path = os.path.join(self.output_dir, file_name)
+            
+            # 如果文件已存在，跳过 (或者可以选择覆盖)
+            if os.path.exists(file_path):
+                print(f"  [SKIP] {title} (文件已存在)")
+                article['local_path'] = file_path
+                continue
+
+            try:
+                self._random_sleep()
+                print(f"  [DOWN] 正在下载: {title}")
+                resp = requests.get(url, headers=self.headers)
+                
+                # 处理图片并替换链接
+                html_content = self._download_images_for_html(resp.text, safe_title, url)
+                
+                # 写入文件
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(html_content)
+                
+                # 更新文章信息，加入本地路径
+                article['local_path'] = file_path
+                print(f"  [OK] 保存成功")
+                
+            except Exception as e:
+                print(f"  [ERROR] 下载失败 {title}: {e}")
+                import traceback
+                traceback.print_exc()
+                article['local_path'] = None
+
+        return articles

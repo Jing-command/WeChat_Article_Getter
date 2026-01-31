@@ -1,0 +1,36 @@
+# 数据文件夹（下载的文章）
+data/
+
+# 下载目录
+downloads/
+
+# Python缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# 虚拟环境
+venv/
+env/
+ENV/
+
+# IDE设置
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 日志文件
+*.log
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 浏览器驱动（可选，如果不想提交驱动文件）
+# msedgedriver.exe
+# chromedriver.exe
