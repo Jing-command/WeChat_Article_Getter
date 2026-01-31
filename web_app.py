@@ -18,7 +18,6 @@ from typing import Optional
 import base64
 from contextlib import redirect_stdout, redirect_stderr
 
-from core.session import SessionManager
 from core.engine import CrawlerEngine
 
 # 初始化FastAPI应用
@@ -33,7 +32,6 @@ class AppState:
     def __init__(self):
         self.is_downloading = False
         self.is_paused = False
-        self.session_mgr = None
         self.engine = None
         self.download_task = None
         self.log_buffer = io.StringIO()
@@ -306,8 +304,7 @@ async def get_status():
     """获取当前状态"""
     return {
         "is_downloading": state.is_downloading,
-        "is_paused": state.is_paused,
-        "has_session": state.session_mgr is not None
+        "is_paused": state.is_paused
     }
 
 if __name__ == "__main__":
