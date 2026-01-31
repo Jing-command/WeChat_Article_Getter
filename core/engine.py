@@ -1,69 +1,97 @@
-import requests
-import random
-import time
-import json
-import os
-import re
-import html
-from bs4 import BeautifulSoup
-from config import Config
-import yt_dlp
-import imageio_ffmpeg
+"""
+爬虫引擎模块
+核心业务逻辑：搜索公众号、获取文章列表、下载文章内容（含图片）
+"""
+
+import requests  # 导入HTTP请求库
+import random  # 导入随机数模块（用于随机延时）
+import time  # 导入时间模块（用于延时和时间戳处理）
+import os  # 导入操作系统接口模块（用于文件和目录操作）
+import re  # 导入正则表达式模块（用于文本匹配和提取）
+from bs4 import BeautifulSoup  # 导入HTML解析库（用于解析和修改HTML内容）
+from config import Config  # 导入配置类
 
 class CrawlerEngine:
+    """
+    爬虫引擎类
+    负责与微信公众平台API交互，实现文章搜索、获取和下载功能
+    """
+    
     def __init__(self, cookies, token, output_dir=None):
         """
         初始化爬虫引擎
-        :param cookies: 登录后的cookies
-        :param token: 微信公众平台接口调用token
-        :param output_dir: 自定义输出目录，如果为None则使用配置文件中的默认目录
+        
+        Args:
+            cookies (dict): 登录后获取的cookies字典（用于身份验证）
+            token (str): 微信公众平台接口调用token（API鉴权凭证）
+            output_dir (str, optional): 自定义输出目录路径，默认使用配置文件中的路径
         """
-        # 保存会话需要的 Cookies
+        # 保存会话需要的Cookies（每次HTTP请求都需要携带）
         self.cookies = cookies
-        # 保存接口调用需要的 Token
+        # 保存接口调用需要的Token（微信API的鉴权参数）
         self.token = token
-        # 设置输出目录
+        # 设置输出目录（用户自定义路径优先，否则使用配置文件的默认路径）
         self.output_dir = output_dir if output_dir else Config.HTML_DIR
-        # 确保输出目录存在
+        # 确保输出目录存在（如果不存在则创建）
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
             print(f"[INFO] 已创建输出目录: {self.output_dir}")
         
-        # 设置通用的请求头，包含 User-Agent 和 Referer
+        # 暂停检查回调函数（由GUI设置，用于支持暂停/恢复功能）
+        self.pause_check_callback = None
+        
+        # 设置通用的HTTP请求头（模拟真实浏览器）
         self.headers = {
-            "User-Agent": Config.USER_AGENT,
-            "Referer": Config.BASE_URL
+            "User-Agent": Config.USER_AGENT,  # 浏览器标识
+            "Referer": Config.BASE_URL  # 来源页面（微信公众平台首页）
         }
 
     def _random_sleep(self):
-        """随机延时，模拟真人操作频率，避免触发反爬机制"""
+        """
+        随机延时方法
+        在MIN_SLEEP和MAX_SLEEP之间随机休眠，模拟人工操作频率，避免触发反爬机制
+        """
+        # 生成随机休眠时间（秒）
         sleep_time = random.uniform(Config.MIN_SLEEP, Config.MAX_SLEEP)
         print(f"[WAIT] 随机等待 {sleep_time:.2f} 秒...")
+        # 休眠指定时间
         time.sleep(sleep_time)
 
     def search_account(self, nickname):
-        """通过昵称搜索公众号，获取其对应的 FakeID"""
+        """
+        通过公众号昵称搜索公众号，获取其FakeID
+        FakeID是微信公众平台内部的公众号唯一标识，用于后续获取文章列表
+        
+        Args:
+            nickname (str): 公众号昵称（支持模糊搜索）
+            
+        Returns:
+            str: 找到的公众号的FakeID，未找到返回None
+        """
         print(f"[SEARCH] 正在搜索公众号: {nickname}")
+        
         # 构造搜索接口的查询参数
         params = {
-            "action": "search_biz",  # 动作：搜索公众号
-            "token": self.token,     # 鉴权 Token
-            "lang": "zh_CN",         # 语言
-            "f": "json",             # 返回格式
+            "action": "search_biz",  # 动作类型：搜索公众号
+            "token": self.token,     # 鉴权Token（从登录后获取）
+            "lang": "zh_CN",         # 语言设置：简体中文
+            "f": "json",             # 返回格式：JSON
             "ajax": "1",             # 异步请求标识
-            "query": nickname,       # 搜索关键词
-            "begin": "0",            # 起始页码
-            "count": "3"             # 每页数量
+            "query": nickname,       # 搜索关键词（公众号昵称）
+            "begin": "0",            # 起始页码（从0开始）
+            "count": "3"             # 每页返回数量（最多3个结果）
         }
         
-        # 请求前随机休眠
+        # 请求前随机休眠（模拟人工操作，避免触发反爬）
         self._random_sleep()
-        # 发送 GET 请求
+        
+        # 发送GET请求到搜索接口
         resp = requests.get(Config.SEARCH_URL, cookies=self.cookies, headers=self.headers, params=params)
-        # 解析 JSON 响应
+        
+        # 解析JSON响应数据
         data = resp.json()
         
-        # 检查返回码，非 0 表示请求失败（如 Session 过期或被封禁）
+        # 检查返回码，ret=0表示成功，非0表示失败（如Session过期或被封禁）
         if data.get("base_resp", {}).get("ret") != 0:
             print("[ERROR] 搜索失败，可能是Session过期或频率过高")
             return None
@@ -375,22 +403,6 @@ class CrawlerEngine:
 
         print(f"    [VIDEO] 已跳过所有视频下载，替换为提示文本")                    
         return True
-           
-
-    def _download_with_ytdlp(self, url, save_path):
-        try:
-            ydl_opts = {
-                'outtmpl': save_path,
-                'quiet': True,
-                'no_warnings': True,
-                'http_headers': {"User-Agent": Config.VIDEO_USER_AGENT},
-                'ffmpeg_location': imageio_ffmpeg.get_ffmpeg_exe()
-            }
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-            return True
-        except:
-            return False
 
     def _download_images_for_html(self, html_content, save_folder_name, article_url):
         """解析HTML，下载图片并替换链接，同时清理无用脚本和外部资源"""
@@ -574,6 +586,11 @@ class CrawlerEngine:
         """下载文章HTML内容到本地"""
         print(f"[DOWNLOAD] 开始下载 {len(articles)} 篇文章的HTML内容...")
         for i, article in enumerate(articles):
+            # 检查是否需要暂停或停止
+            if self.pause_check_callback and self.pause_check_callback():
+                print("[INFO] 下载已取消")
+                return articles
+            
             url = article['link']
             title = article['title']
             
