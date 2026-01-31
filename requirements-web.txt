@@ -1,0 +1,15 @@
+# 微信文章下载器 - Web版依赖库
+# 安装命令: pip install -r requirements-web.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+# Web框架
+fastapi>=0.128.0
+uvicorn[standard]>=0.40.0
+python-multipart>=0.0.22
+jinja2>=3.1.6
+
+# WebSocket支持
+websockets>=16.0
+
+# HTTP请求和网页解析（核心功能）
+requests>=2.31.0
+beautifulsoup4>=4.12.0

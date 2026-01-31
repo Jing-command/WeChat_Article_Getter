@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>获取微信公众平台凭证 - 辅助工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 800px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .step {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+        }
+
+        .step-title {
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+
+        .step-content {
+            color: #555;
+            line-height: 1.8;
+        }
+
+        .bookmarklet-container {
+            background: #fff3cd;
+            border: 2px dashed #ffc107;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .bookmarklet-btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 40px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 16px;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            transition: transform 0.2s;
+            cursor: move;
+        }
+
+        .bookmarklet-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        .hint {
+            color: #856404;
+            margin-top: 10px;
+            font-size: 13px;
+        }
+
+        .code-block {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Consolas', monospace;
+            font-size: 13px;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+
+        .warning {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        .warning-title {
+            font-weight: bold;
+            color: #856404;
+            margin-bottom: 5px;
+        }
+
+        ol {
+            margin-left: 20px;
+        }
+
+        ol li {
+            margin-bottom: 10px;
+        }
+
+        strong {
+            color: #667eea;
+        }
+
+        .demo-video {
+            width: 100%;
+            border-radius: 10px;
+            margin: 15px 0;
+            border: 2px solid #e0e0e0;
+        }
+
+        .copy-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        .copy-btn:hover {
+            background: #218838;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 微信公众平台凭证获取工具</h1>
+        <p class="subtitle">快速提取Token和Cookies，一键复制</p>
+
+        <div class="step">
+            <div class="step-title">📌 步骤1：添加书签工具</div>
+            <div class="step-content">
+                <p><strong>将下面的按钮添加到书签栏：</strong></p>
+                <div class="bookmarklet-container">
+                    <a href="javascript:(function(){try{let t='';const c=document.cookie.split(';');for(let i=0;i<c.length;i++){const p=c[i].trim().split('=');if(p[0]==='token'){t=p[1];break}}if(!t){const u=new URL(window.location.href);t=u.searchParams.get('token')||''}const cookies=document.cookie;if(!t||!cookies){alert('❌ 未找到Token或Cookies\n\n请确保：\n1. 已登录微信公众平台\n2. 在 mp.weixin.qq.com 域名下');return}const result=`Token: ${t}\n\nCookies:\n${cookies}`;const ta=document.createElement('textarea');ta.value=result;ta.style.position='fixed';ta.style.top='-9999px';document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);const div=document.createElement('div');div.innerHTML=`<div style='position:fixed;top:20px;right:20px;background:#4CAF50;color:white;padding:20px 30px;border-radius:10px;box-shadow:0 4px 15px rgba(0,0,0,0.3);z-index:999999;font-family:Microsoft YaHei;'><h3 style='margin:0 0 10px 0;font-size:18px;'>✅ 复制成功！</h3><p style='margin:0;font-size:14px;line-height:1.6;'>Token: ${t}<br>已复制到剪贴板<br><br>现在可以粘贴到网站了</p></div>`;document.body.appendChild(div);setTimeout(()=>div.remove(),5000)}catch(e){alert('发生错误：'+e.message)}})();" 
+                       class="bookmarklet-btn" 
+                       onclick="showBookmarkInstructions(); return false;">
+                        📋 一键复制微信凭证
+                    </a>
+                    <p class="hint">👆 右键点击 → 添加到书签</p>
+                </div>
+                <p>添加后，在微信公众平台点击这个书签即可提取。</p>
+            </div>
+        </div>
+
+        <div class="step">
+            <div class="step-title">🌐 步骤2：登录微信公众平台</div>
+            <div class="step-content">
+                <ol>
+                    <li>打开 <a href="https://mp.weixin.qq.com" target="_blank" style="color:#667eea;" id="mpLink">微信公众平台</a></li>
+                    <li>使用微信扫码登录</li>
+                    <li>登录成功后，点击刚才添加的书签</li>
+                </ol>
+            </div>
+        </div>
+
+        <div class="step">
+            <div class="step-title">✨ 步骤3：使用书签提取凭证</div>
+            <div class="step-content">
+                <p>在微信公众平台页面，点击书签栏中的 <strong>📋 一键复制微信凭证</strong></p>
+                <p>✅ 会自动提取并复制Token和Cookies到剪贴板</p>
+                <p>✅ 页面右上角会显示成功提示</p>
+            </div>
+        </div>
+
+        <div class="step">
+            <div class="step-title">📝 步骤4：粘贴到网站</div>
+            <div class="step-content">
+                <p>返回下载器网站，粘贴到对应的输入框：</p>
+                <ul style="margin-left: 20px; margin-top: 10px;">
+                    <li><strong>Token输入框</strong>：从复制的内容中找到"Token: "后面的数字</li>
+                    <li><strong>Cookies输入框</strong>：从"Cookies:"后面复制整段内容</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="warning">
+            <div class="warning-title">⚠️ 注意事项</div>
+            <ul style="margin-left: 20px; margin-top: 10px; color: #856404;">
+                <li>Token和Cookies包含敏感信息，<strong>请勿泄露给他人</strong></li>
+                <li>凭证有效期通常为几天到几周，过期后需要重新获取</li>
+                <li>此工具只在浏览器本地运行，不会上传任何数据</li>
+                <li>建议使用Chrome、Edge等现代浏览器</li>
+            </ul>
+        </div>
+
+        <div class="step">
+            <div class="step-title">🛠️ 手动复制方法（备用）</div>
+            <div class="step-content">
+                <p>如果书签方法不可用，可以手动复制：</p>
+                <ol>
+                    <li>在微信公众平台页面按 <code>F12</code> 打开开发者工具</li>
+                    <li>切换到 <strong>Console（控制台）</strong> 标签</li>
+                    <li>粘贴并执行以下代码：</li>
+                </ol>
+                <div class="code-block" id="manualCode">let token = '';
+const cookies = document.cookie.split(';');
+for(let i = 0; i < cookies.length; i++) {
+    const pair = cookies[i].trim().split('=');
+    if(pair[0] === 'token') {
+        token = pair[1];
+        break;
+    }
+}
+console.log('Token:', token);
+console.log('Cookies:', document.cookie);</div>
+                <button class="copy-btn" onclick="copyManualCode()">复制代码</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function copyManualCode() {
+            const code = document.getElementById('manualCode').textContent;
+            const textarea = document.createElement('textarea');
+            textarea.value = code;
+            textarea.style.position = 'fixed';
+            textarea.style.top = '-9999px';
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            alert('✅ 代码已复制到剪贴板！\n\n现在：\n1. 在微信公众平台按F12\n2. 切换到Console\n3. 粘贴并回车');
+        }
+
+        function showBookmarkInstructions() {
+            alert('📌 如何添加书签：\n\n' +
+                  '方式1（推荐）：\n' +
+                  '右键点击按钮 → 添加到书签/收藏夹\n\n' +
+                  '方式2：\n' +
+                  '按住鼠标左键拖拽到书签栏\n\n' +
+                  '💡 提示：添加后，在微信公众平台点击这个书签即可一键提取凭证！');
+        }
+    </script>
+</body>
+</html>
+
+
+
+

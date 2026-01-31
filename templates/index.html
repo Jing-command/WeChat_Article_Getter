@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>微信文章下载器 - Web版</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 标题栏 -->
+        <header class="header">
+            <h1>微信文章下载器</h1>
+            <p class="subtitle">WeChat Article Getter - Web Version</p>
+        </header>
+
+        <!-- 主内容区 -->
+        <div class="main-content">
+            <!-- 左侧设置区 -->
+            <div class="left-panel">
+                <div class="scrollable-content">
+                    <!-- 登录凭证设置 -->
+                    <section class="section">
+                        <h3>🔑 登录凭证设置</h3>
+                        <div class="login-guide">
+                            <p class="guide-title">📌 首次使用请先获取登录凭证：</p>
+                            <div style="background: #667eea; color: white; padding: 12px; border-radius: 6px; margin: 15px 0; text-align: center;">
+                                <a href="/helper" target="_blank" style="color: white; text-decoration: none; font-weight: bold; font-size: 16px;">
+                                    ⚡ 点击查看【一键复制工具】使用说明 →
+                                </a>
+                            </div>
+                            <ol class="guide-steps">
+                                <li>在新标签页打开 <a href="https://mp.weixin.qq.com" target="_blank" class="link">微信公众平台</a> 并登录</li>
+                                <li>使用上方的【一键复制工具】或手动获取凭证</li>
+                                <li>将Token和Cookies粘贴到下方输入框</li>
+                            </ol>
+                        </div>
+                        
+                        <div class="credential-inputs">
+                            <div class="input-group">
+                                <label>Token <span class="required">*</span></label>
+                                <input type="text" id="tokenInput" class="input-field" placeholder="10位数字，例如：1234567890">
+                            </div>
+                            
+                            <div class="input-group">
+                                <label>Cookies <span class="required">*</span></label>
+                                <textarea id="cookiesInput" class="input-textarea" rows="4" placeholder="格式：name=value; name2=value2; ..."></textarea>
+                                <p class="hint">💡 将所有cookies复制粘贴到这里</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- 输入区域 -->
+                    <section class="section">
+                        <h3>公众号名称或文章链接</h3>
+                        <input type="text" id="urlInput" class="input-field" placeholder="输入公众号名称或文章链接">
+                        <p class="hint">💡 单篇下载请输入文章链接；批量下载可输入公众号名称或任意文章链接</p>
+                        
+                        <div class="button-group">
+                            <button id="startBtn" class="btn btn-primary">开始下载</button>
+                            <button id="pauseBtn" class="btn btn-warning" disabled>⏸ 暂停</button>
+                        </div>
+                    </section>
+
+                    <!-- 下载选项 -->
+                    <section class="section">
+                        <h3>下载选项</h3>
+                        
+                        <div class="option-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="singleMode" checked>
+                                <span>单篇下载</span>
+                            </label>
+                        </div>
+
+                        <div class="option-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="batchMode">
+                                <span>批量下载该公众号文章</span>
+                            </label>
+                            
+                            <div class="sub-option">
+                                <label>下载数量:</label>
+                                <input type="number" id="countInput" class="input-small" value="10" min="1" disabled>
+                                <span id="countHint" class="hint-inline">(将下载最近的10篇文章)</span>
+                            </div>
+                        </div>
+
+                        <div class="separator"></div>
+
+                        <div class="option-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="dateMode">
+                                <span>按日期范围下载</span>
+                            </label>
+                            
+                            <div class="sub-option date-range">
+                                <div class="date-input-group">
+                                    <label>开始日期:</label>
+                                    <input type="date" id="startDate" class="input-date" value="2025-10-01" disabled>
+                                </div>
+                                <span class="date-separator">至</span>
+                                <div class="date-input-group">
+                                    <label>结束日期:</label>
+                                    <input type="date" id="endDate" class="input-date" value="2025-11-30" disabled>
+                                </div>
+                            </div>
+                            <p class="hint">格式: YYYY-MM-DD</p>
+                        </div>
+                    </section>
+
+                    <!-- 下载路径 -->
+                    <section class="section">
+                        <h3>下载路径</h3>
+                        <input type="text" id="pathInput" class="input-field" value="downloads">
+                        <p class="hint">文章将保存到此目录，如果不存在会自动创建</p>
+                    </section>
+                </div>
+            </div>
+
+            <!-- 右侧日志区 -->
+            <div class="right-panel">
+                <section class="section log-section">
+                    <h3>运行日志</h3>
+                    <div id="logOutput" class="log-output"></div>
+                </section>
+            </div>
+        </div>
+
+        <!-- 状态栏 -->
+        <footer class="status-bar">
+            <span id="statusText">● 就绪</span>
+        </footer>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>
