@@ -19,7 +19,7 @@
 
 ### 方法一：使用可执行文件（推荐）
 
-1. 从 [Releases](https://github.com/你的用户名/WeChat_Article_Getter/releases) 下载最新版本的 `WeChat_Article_Getter.exe`
+1. 从 [Releases](https://github.com/Jing-command/WeChat_Article_Getter/releases) 下载最新版本的 `WeChat_Article_Getter.exe`
 2. 下载 `msedgedriver.exe` 并放在同一目录
 3. 双击运行 `WeChat_Article_Getter.exe`
 
@@ -27,7 +27,7 @@
 
 1. **克隆项目**
 ```bash
-git clone https://github.com/你的用户名/WeChat_Article_Getter.git
+git clone https://github.com/Jing-command/WeChat_Article_Getter.git
 cd WeChat_Article_Getter
 ```
 
