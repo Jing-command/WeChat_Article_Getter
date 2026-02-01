@@ -1,7 +1,6 @@
 
 # 下载目录
 downloads/
-*.zip
 
 # 临时ZIP目录
 temp_zips/

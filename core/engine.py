@@ -43,7 +43,12 @@ class CrawlerEngine:
         # 设置通用的HTTP请求头（模拟真实浏览器）
         self.headers = {
             "User-Agent": Config.USER_AGENT,  # 浏览器标识
-            "Referer": Config.BASE_URL  # 来源页面（微信公众平台首页）
+            "Referer": Config.BASE_URL,  # 来源页面（微信公众平台首页）
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "X-Requested-With": "XMLHttpRequest"
         }
 
     def _random_sleep(self):
@@ -70,6 +75,12 @@ class CrawlerEngine:
         """
         print(f"[SEARCH] 正在搜索公众号: {nickname}")
         
+        # 调试：显示关键Cookie字段（用于诊断）
+        key_cookies = ['data_bizuin', 'bizuin', 'data_ticket', 'slave_sid', 'slave_user']
+        present_cookies = [k for k in key_cookies if k in self.cookies]
+        print(f"[DEBUG] 关键Cookie字段: {', '.join(present_cookies) if present_cookies else '无'}")
+        print(f"[DEBUG] 总Cookie数量: {len(self.cookies)}")
+        
         # 构造搜索接口的查询参数
         params = {
             "action": "search_biz",  # 动作类型：搜索公众号
@@ -85,26 +96,80 @@ class CrawlerEngine:
         # 请求前随机休眠（模拟人工操作，避免触发反爬）
         self._random_sleep()
         
-        # 发送GET请求到搜索接口
-        resp = requests.get(Config.SEARCH_URL, cookies=self.cookies, headers=self.headers, params=params)
-        
-        # 解析JSON响应数据
-        data = resp.json()
-        
-        # 检查返回码，ret=0表示成功，非0表示失败（如Session过期或被封禁）
-        if data.get("base_resp", {}).get("ret") != 0:
-            print("[ERROR] 搜索失败，可能是Session过期或频率过高")
-            return None
+        try:
+            # 发送GET请求到搜索接口
+            resp = requests.get(Config.SEARCH_URL, cookies=self.cookies, headers=self.headers, params=params, timeout=15)
+            
+            # 检查HTTP状态码
+            if resp.status_code != 200:
+                print(f"[ERROR] HTTP请求失败，状态码: {resp.status_code}")
+                return None
+            
+            # 解析JSON响应数据
+            try:
+                data = resp.json()
+            except Exception as e:
+                print(f"[ERROR] JSON解析失败: {e}")
+                print(f"[DEBUG] 响应内容前200字符: {resp.text[:200]}")
+                return None
+            
+            # 检查返回码，ret=0表示成功，非0表示失败（如Session过期或被封禁）
+            base_resp = data.get("base_resp", {})
+            ret_code = base_resp.get("ret", -1)
+            err_msg = base_resp.get("err_msg", "未知错误")
+            
+            if ret_code != 0:
+                print(f"[ERROR] 搜索接口返回错误")
+                print(f"[ERROR] 错误码: {ret_code}")
+                print(f"[ERROR] 错误信息: {err_msg}")
+                
+                # 针对常见错误码给出提示
+                if ret_code == 200013:
+                    print("[HINT] Cookie已过期，请重新获取登录凭证")
+                elif ret_code == -1:
+                    print("[HINT] 接口参数可能有误或接口已变更")
+                elif ret_code == 200003:
+                    if "invalid session" in err_msg.lower():
+                        print("[HINT] Cookie无效或不完整！")
+                        print("[HINT] 常见原因：")
+                        print("       1. Cookie已过期（最常见） - 需要重新登录")
+                        print("       2. Cookie复制不完整 - 确保复制了所有Cookie字段")
+                        print("       3. Token与Cookie不匹配 - 确保来自同一次登录")
+                        print("[HINT] 解决方案：")
+                        print("       1. 重新登录微信公众平台 https://mp.weixin.qq.com")
+                        print("       2. 使用【一键复制工具】获取完整凭证")
+                        print("       3. 运行 'python check_cookies.py' 检查Cookie完整性")
+                    else:
+                        print("[HINT] 操作频繁，请稍后再试")
+                else:
+                    print("[HINT] 建议检查Token和Cookies是否正确，或尝试重新登录")
+                
+                return None
 
-        # 获取搜索结果列表
-        biz_list = data.get("list", [])
-        if biz_list:
-            # 提取第一个匹配公众号的 fakeid (全平台唯一标识)
-            fakeid = biz_list[0].get("fakeid")
-            print(f"[SUCCESS] 找到目标: {biz_list[0].get('nickname')} (FakeID: {fakeid})")
-            return fakeid
-        else:
-            print("[ERROR] 未找到相关公众号")
+            # 获取搜索结果列表
+            biz_list = data.get("list", [])
+            if biz_list:
+                # 提取第一个匹配公众号的 fakeid (全平台唯一标识)
+                fakeid = biz_list[0].get("fakeid")
+                nickname_found = biz_list[0].get("nickname")
+                print(f"[SUCCESS] 找到目标: {nickname_found} (FakeID: {fakeid})")
+                return fakeid
+            else:
+                print("[ERROR] 未找到相关公众号")
+                print(f"[HINT] 请检查公众号名称是否正确: '{nickname}'")
+                print("[HINT] 建议使用文章链接进行下载（更稳定）")
+                return None
+                
+        except requests.Timeout:
+            print("[ERROR] 请求超时，请检查网络连接")
+            return None
+        except requests.RequestException as e:
+            print(f"[ERROR] 网络请求异常: {e}")
+            return None
+        except Exception as e:
+            print(f"[ERROR] 未预期的错误: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     def get_articles(self, fakeid, count=5):

@@ -322,6 +322,7 @@ class WebLogger:
 def parse_credentials(credentials: str) -> tuple:
     """
     自动解析凭证字符串，提取 Token 和 Cookies
+    支持标准格式和EditThisCookie JSON格式
     
     Args:
         credentials: 包含 Token 和 Cookies 的字符串
@@ -335,7 +336,44 @@ def parse_credentials(credentials: str) -> tuple:
     token = None
     cookies = None
     
-    # 遍历每一行查找 token 和 cookies
+    # 检测是否包含JSON格式的Cookies（EditThisCookie导出格式）
+    json_content = credentials.strip()
+    if json_content.startswith('[') and json_content.endswith(']'):
+        try:
+            cookie_list = json.loads(json_content)
+            if isinstance(cookie_list, list) and len(cookie_list) > 0:
+                # 转换JSON格式为标准Cookie字符串
+                cookie_parts = []
+                required_cookies = {'appmsg_token', 'data_bizuin', 'bizuin', 'data_ticket', 'slave_sid', 'slave_user'}
+                found_cookies = set()
+                
+                for cookie in cookie_list:
+                    if isinstance(cookie, dict) and 'name' in cookie and 'value' in cookie:
+                        name = cookie['name']
+                        value = cookie['value']
+                        domain = cookie.get('domain', '')
+                        
+                        # 只保留微信公众平台相关的Cookie
+                        if 'weixin.qq.com' in domain or 'qq.com' in domain:
+                            cookie_parts.append(f"{name}={value}")
+                            if name in required_cookies:
+                                found_cookies.add(name)
+                
+                if cookie_parts:
+                    cookies = '; '.join(cookie_parts)
+                    print(f"[SUCCESS] 自动识别EditThisCookie JSON格式，已转换为标准格式")
+                    print(f"[INFO] 共解析 {len(cookie_parts)} 个Cookie字段")
+                    print(f"[INFO] 关键字段: {', '.join(sorted(found_cookies))}")
+                    
+                    missing = required_cookies - found_cookies
+                    if missing:
+                        print(f"[WARN] 缺少关键Cookie: {', '.join(missing)}")
+                    
+                    return None, cookies  # JSON格式只包含cookies，没有token
+        except json.JSONDecodeError:
+            pass  # 不是有效的JSON，继续尝试其他格式
+    
+    # 原有的标准格式解析逻辑
     for line in lines:
         line = line.strip()
         if not line:
@@ -930,8 +968,16 @@ async def download_zip_file(filename: str):
 
 if __name__ == "__main__":
     import uvicorn
-    print("🚀 启动微信文章下载器 Web服务...")
-    print("📱 请在浏览器中访问: http://localhost:8000")
+    import sys
+    
+    # 设置控制台输出编码为 UTF-8，避免中文乱码
+    if sys.platform == 'win32':
+        import codecs
+        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
+        sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
+    
+    print("启动微信文章下载器 Web服务...")
+    print("请在浏览器中访问: http://localhost:8000")
     
     # 启动时清理旧ZIP文件
     cleanup_old_zips()

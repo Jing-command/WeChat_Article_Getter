@@ -59,8 +59,16 @@
                     <!-- 输入区域 -->
                     <section class="section">
                         <h3>公众号名称或文章链接</h3>
-                        <input type="text" id="urlInput" class="input-field" placeholder="输入公众号名称或文章链接">
-                        <p class="hint">💡 单篇下载请输入文章链接；批量下载可输入公众号名称或任意文章链接</p>
+                        <input type="text" id="urlInput" class="input-field" placeholder="输入公众号名称或文章链接（推荐使用文章链接）">
+                        <div class="hint" style="background: #fef3c7; border-left: 3px solid #f59e0b; padding: 10px; margin: 10px 0; border-radius: 4px;">
+                            <p style="margin: 0 0 8px 0; font-weight: bold; color: #92400e;">💡 使用建议：</p>
+                            <ul style="margin: 0; padding-left: 20px; color: #78350f;">
+                                <li><strong>推荐方式</strong>：使用文章链接（更稳定可靠）</li>
+                                <li>单篇下载：必须使用文章链接</li>
+                                <li>批量下载：可使用公众号名称或任意文章链接</li>
+                                <li>如公众号名称搜索失败，建议改用文章链接</li>
+                            </ul>
+                        </div>
                         
                         <div class="button-group">
                             <button id="startBtn" class="btn btn-primary">开始下载</button>
