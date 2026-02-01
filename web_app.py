@@ -227,13 +227,6 @@ def sanitize_log(message: str) -> str:
     """脱敏日志中的敏感信息"""
     import re
     
-    # 脱敏激活码（保留格式）
-    message = re.sub(
-        r'([SB]-[A-F0-9]{4})-[A-F0-9]{4}-[A-F0-9]{4}-([A-F0-9]{4})',
-        r'\1-****-****-\2',
-        message
-    )
-    
     # 脱敏 Token（10位数字）
     message = re.sub(
         r'\b(\d{3})\d{4}(\d{3})\b',
@@ -525,10 +518,9 @@ async def start_download(request: DownloadRequest, req: Request):
     state.current_activation_key = activation_key
     state.current_key_type = key_type
     
-    # 脱敏日志
+    # 脱敏日志（Token 脱敏，激活码不脱敏）
     safe_token = sanitize_sensitive_data(request.token, 3)
-    safe_key = re.sub(r'([SB]-[A-F0-9]{4})-[A-F0-9]{4}-[A-F0-9]{4}-([A-F0-9]{4})', r'\1-****-****-\2', activation_key)
-    await state.broadcast_log(f"[SUCCESS] 激活码验证通过 (类型: {'批量下载' if key_type == 'batch' else '单次下载'}, Key: {safe_key})")
+    await state.broadcast_log(f"[SUCCESS] 激活码验证通过 (类型: {'批量下载' if key_type == 'batch' else '单次下载'}, Key: {activation_key})")
     await state.broadcast_log(f"[INFO] Token: {safe_token}, IP: {client_ip}")
     
     # 重定向标准输出到WebSocket
