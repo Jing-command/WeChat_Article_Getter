@@ -113,7 +113,7 @@ async def websocket_endpoint(websocket: WebSocket):
         })
         await websocket.send_json({
             "type": "log",
-            "message": "  欢迎使用微信文章下载器 Web版 v2.0"
+            "message": "  🎉 欢迎使用微信文章下载器 Web版 v2.0"
         })
         await websocket.send_json({
             "type": "log",
@@ -121,7 +121,111 @@ async def websocket_endpoint(websocket: WebSocket):
         })
         await websocket.send_json({
             "type": "log",
-            "message": "✨ 准备就绪，等待您的指令..."
+            "message": ""
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": "[SUCCESS] ✅ 系统初始化完成！"
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": "[INFO] 📡 WebSocket 连接已建立，日志推送就绪"
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": "[INFO] 🔐 激活码验证系统已加载"
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": ""
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": "📋 使用步骤："
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": ""
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": "  1️⃣  输入激活码"
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": "      • S- 开头：单次下载"
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": "      • B- 开头：批量下载（包括日期范围）"
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": ""
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": "  2️⃣  获取登录凭证"
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": "      • 点击蓝色按钮查看【一键复制工具】"
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": "      • 登录微信公众平台获取 Token 和 Cookies"
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": ""
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": "  3️⃣  输入链接或公众号名称"
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": "      • 单次：输入文章链接"
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": "      • 批量：输入公众号名称或任意文章链接"
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": ""
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": "  4️⃣  选择下载模式并点击【开始下载】"
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": ""
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": ""
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": "✨ 系统就绪，请按照上述步骤开始使用"
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": "💡 提示：下载完成后激活码会自动失效，请准备新的激活码继续使用"
+        })
+        await websocket.send_json({
+            "type": "log",
+            "message": ""
         })
         
         # 保持连接
@@ -136,6 +240,41 @@ async def websocket_endpoint(websocket: WebSocket):
 async def login():
     """登录接口 - 已废弃，保留用于兼容"""
     return {"success": False, "message": "请使用手动输入Token和Cookies的方式"}
+
+@app.post("/api/verify_key")
+async def verify_activation_key(request: dict):
+    """验证激活码有效性"""
+    activation_key = request.get("activation_key", "").strip()
+    
+    if not activation_key:
+        return {"valid": False, "message": "请输入激活码"}
+    
+    # 验证格式
+    import re
+    if not re.match(r'^[SB]-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$', activation_key):
+        return {"valid": False, "message": "格式错误", "type": None}
+    
+    # 判断类型
+    key_type = "single" if activation_key.startswith("S-") else "batch"
+    type_name = "单次下载" if key_type == "single" else "批量下载"
+    
+    # 验证有效性
+    is_valid = key_generator.verify_key(activation_key, key_type)
+    
+    if is_valid:
+        return {
+            "valid": True, 
+            "message": f"有效 ({type_name})", 
+            "type": key_type,
+            "type_name": type_name
+        }
+    else:
+        return {
+            "valid": False, 
+            "message": "无效或已使用", 
+            "type": key_type,
+            "type_name": type_name
+        }
 
 @app.post("/api/download")
 async def start_download(request: DownloadRequest):

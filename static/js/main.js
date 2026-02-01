@@ -6,6 +6,7 @@ let isPaused = false;
 // DOM元素
 const urlInput = document.getElementById('urlInput');
 const activationKeyInput = document.getElementById('activationKeyInput');
+const keyStatus = document.getElementById('keyStatus');
 const tokenInput = document.getElementById('tokenInput');
 const cookiesInput = document.getElementById('cookiesInput');
 const startBtn = document.getElementById('startBtn');
@@ -72,6 +73,55 @@ function setupEventListeners() {
     
     // 数量输入框
     countInput.addEventListener('input', updateCountHint);
+    
+    // 激活码输入框 - 实时验证
+    activationKeyInput.addEventListener('input', debounce(verifyActivationKey, 500));
+}
+
+// 防抖函数
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// 验证激活码
+async function verifyActivationKey() {
+    const key = activationKeyInput.value.trim();
+    
+    if (!key) {
+        keyStatus.textContent = '';
+        return;
+    }
+    
+    // 显示验证中
+    keyStatus.innerHTML = '<span style="color: #888;">验证中...</span>';
+    
+    try {
+        const response = await fetch('/api/verify_key', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ activation_key: key })
+        });
+        
+        const result = await response.json();
+        
+        if (result.valid) {
+            keyStatus.innerHTML = `<span style="color: #10b981; font-weight: bold;">✓ ${result.message}</span>`;
+        } else {
+            keyStatus.innerHTML = `<span style="color: #ef4444; font-weight: bold;">✗ ${result.message}</span>`;
+        }
+    } catch (error) {
+        keyStatus.innerHTML = '<span style="color: #ef4444;">验证失败</span>';
+    }
 }
 
 // 处理单篇下载模式切换
