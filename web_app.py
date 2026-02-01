@@ -269,10 +269,23 @@ class WebLogger(io.StringIO):
     def __init__(self, state: AppState):
         super().__init__()
         self.state = state
+        self.loop = None
     
     def write(self, message):
         if message.strip():
-            asyncio.create_task(self.state.broadcast_log(message.strip()))
+            # 获取或设置事件循环
+            if self.loop is None:
+                try:
+                    self.loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    return len(message)
+            
+            # 在事件循环中调度协程
+            if self.loop and self.loop.is_running():
+                asyncio.run_coroutine_threadsafe(
+                    self.state.broadcast_log(message.strip()),
+                    self.loop
+                )
         return len(message)
     
     def flush(self):
@@ -528,9 +541,11 @@ async def start_download(request: DownloadRequest, req: Request):
     await state.broadcast_log(f"[SUCCESS] 激活码验证通过 (类型: {'批量下载' if key_type == 'batch' else '单次下载'}, Key: {activation_key})")
     await state.broadcast_log(f"[INFO] Token: {safe_token}, IP: {client_ip}")
     
-    # 重定向标准输出到WebSocket
-    sys.stdout = WebLogger(state)
-    sys.stderr = WebLogger(state)
+    # 获取当前事件循环并重定向标准输出到WebSocket
+    logger = WebLogger(state)
+    logger.loop = asyncio.get_running_loop()
+    sys.stdout = logger
+    sys.stderr = logger
     
     state.is_downloading = True
     state.is_paused = False
