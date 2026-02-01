@@ -172,6 +172,13 @@ async def rate_limit_middleware(request: Request, call_next):
         )
     
     response = await call_next(request)
+    
+    # 添加安全响应头
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    
     return response
 
 # 静态文件和模板
@@ -199,6 +206,8 @@ class AppState:
     
     async def broadcast_log(self, message: str):
         """广播日志到所有连接的WebSocket"""
+        # 脱敏处理
+        message = sanitize_log(message)
         for ws in self.active_websockets:
             try:
                 await ws.send_json({"type": "log", "message": message})
@@ -206,6 +215,42 @@ class AppState:
                 pass
 
 state = AppState()
+
+# 敏感信息脱敏工具
+def sanitize_sensitive_data(data: str, show_chars: int = 4) -> str:
+    """脱敏敏感数据，只显示前几位和后几位"""
+    if not data or len(data) <= show_chars * 2:
+        return "***"
+    return f"{data[:show_chars]}...{data[-show_chars:]}"
+
+def sanitize_log(message: str) -> str:
+    """脱敏日志中的敏感信息"""
+    import re
+    
+    # 脱敏激活码（保留格式）
+    message = re.sub(
+        r'([SB]-[A-F0-9]{4})-[A-F0-9]{4}-[A-F0-9]{4}-([A-F0-9]{4})',
+        r'\1-****-****-\2',
+        message
+    )
+    
+    # 脱敏 Token（10位数字）
+    message = re.sub(
+        r'\b(\d{3})\d{4}(\d{3})\b',
+        r'\1***\2',
+        message
+    )
+    
+    # 脱敏 Cookies（长字符串）
+    if 'cookie' in message.lower() or 'token' in message.lower():
+        # 脱敏长字符串（可能是cookie值）
+        message = re.sub(
+            r'=([a-zA-Z0-9+/=]{20,})',
+            lambda m: f"={sanitize_sensitive_data(m.group(1), 4)}",
+            message
+        )
+    
+    return message
 
 # Pydantic模型定义
 class DownloadRequest(BaseModel):
@@ -428,10 +473,34 @@ async def verify_activation_key(request: dict, req: Request):
         }
 
 @app.post("/api/download")
-async def start_download(request: DownloadRequest):
+async def start_download(request: DownloadRequest, req: Request):
     """开始下载"""
+    client_ip = req.client.host
+    
     if state.is_downloading:
         return {"success": False, "message": "已有下载任务在进行中"}
+    
+    # 输入验证
+    if not request.url or not request.url.strip():
+        return {"success": False, "message": "请输入公众号名称或文章链接"}
+    
+    if not request.token or not request.token.strip():
+        return {"success": False, "message": "请输入 Token"}
+    
+    if not request.cookies or not request.cookies.strip():
+        return {"success": False, "message": "请输入 Cookies"}
+    
+    # Token 格式验证（应该是10位数字）
+    import re
+    if not re.match(r'^\d{10}$', request.token.strip()):
+        rate_limiter.record_failure(client_ip, "/api/download")
+        return {"success": False, "message": "Token 格式错误，应为10位数字"}
+    
+    # 路径验证（防止路径注入）
+    download_path = request.download_path.strip()
+    if '..' in download_path or download_path.startswith('/') or ':' in download_path[1:]:
+        rate_limiter.record_failure(client_ip, "/api/download")
+        return {"success": False, "message": "下载路径格式错误"}
     
     # 验证激活码
     activation_key = request.activation_key.strip()
@@ -440,12 +509,14 @@ async def start_download(request: DownloadRequest):
     if request.batch_mode or request.date_mode:
         # 批量下载（包括日期范围下载），需要批量激活码
         if not key_generator.verify_key(activation_key, "batch"):
+            rate_limiter.record_failure(client_ip, "/api/download")
             await state.broadcast_log("[ERROR] 批量下载（包括日期范围下载）需要有效的批量下载激活码 (B- 开头)")
             return {"success": False, "message": "激活码无效或已被使用，批量下载（包括日期范围下载）需要使用 B- 开头的激活码"}
         key_type = "batch"
     else:
         # 单次下载，需要单次激活码
         if not key_generator.verify_key(activation_key, "single"):
+            rate_limiter.record_failure(client_ip, "/api/download")
             await state.broadcast_log("[ERROR] 单次下载需要有效的单次下载激活码 (S- 开头)")
             return {"success": False, "message": "激活码无效或已被使用，单次下载需要使用 S- 开头的激活码"}
         key_type = "single"
@@ -453,7 +524,12 @@ async def start_download(request: DownloadRequest):
     # 保存当前激活码信息，等下载成功后再标记为已使用
     state.current_activation_key = activation_key
     state.current_key_type = key_type
-    await state.broadcast_log(f"[SUCCESS] 激活码验证通过 (类型: {'批量下载' if key_type == 'batch' else '单次下载'})")
+    
+    # 脱敏日志
+    safe_token = sanitize_sensitive_data(request.token, 3)
+    safe_key = re.sub(r'([SB]-[A-F0-9]{4})-[A-F0-9]{4}-[A-F0-9]{4}-([A-F0-9]{4})', r'\1-****-****-\2', activation_key)
+    await state.broadcast_log(f"[SUCCESS] 激活码验证通过 (类型: {'批量下载' if key_type == 'batch' else '单次下载'}, Key: {safe_key})")
+    await state.broadcast_log(f"[INFO] Token: {safe_token}, IP: {client_ip}")
     
     # 重定向标准输出到WebSocket
     sys.stdout = WebLogger(state)
@@ -494,7 +570,7 @@ async def run_download_async(request: DownloadRequest):
                     cookies_dict[name.strip()] = value.strip()
             
             await state.broadcast_log(f"[SUCCESS] 成功解析 {len(cookies_dict)} 个cookies")
-            await state.broadcast_log(f"[INFO] Token: {request.token}")
+            # Token 已在前面脱敏输出，这里不再重复
         except Exception as e:
             await state.broadcast_log(f"[ERROR] Cookies解析失败: {str(e)}")
             return
