@@ -1,8 +1,13 @@
-# 数据文件夹（下载的文章）
-data/
 
 # 下载目录
 downloads/
+*.zip
+
+# 临时ZIP目录
+temp_zips/
+
+# 激活码文件（敏感信息）
+activation_keys.json
 
 # Python缓存
 __pycache__/
