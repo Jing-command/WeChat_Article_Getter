@@ -164,16 +164,32 @@
         <div class="step">
             <div class="step-title">📌 步骤1：添加书签工具</div>
             <div class="step-content">
-                <p><strong>将下面的按钮添加到书签栏：</strong></p>
+                <p><strong>Chrome/Edge 浏览器添加方法：</strong></p>
                 <div class="bookmarklet-container">
                     <a href="javascript:(function(){try{let t='';const c=document.cookie.split(';');for(let i=0;i<c.length;i++){const p=c[i].trim().split('=');if(p[0]==='token'){t=p[1];break}}if(!t){const u=new URL(window.location.href);t=u.searchParams.get('token')||''}const cookies=document.cookie;if(!t||!cookies){alert('❌ 未找到Token或Cookies\n\n请确保：\n1. 已登录微信公众平台\n2. 在 mp.weixin.qq.com 域名下');return}const result=`Token: ${t}\n\nCookies:\n${cookies}`;const ta=document.createElement('textarea');ta.value=result;ta.style.position='fixed';ta.style.top='-9999px';document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);const div=document.createElement('div');div.innerHTML=`<div style='position:fixed;top:20px;right:20px;background:#4CAF50;color:white;padding:20px 30px;border-radius:10px;box-shadow:0 4px 15px rgba(0,0,0,0.3);z-index:999999;font-family:Microsoft YaHei;'><h3 style='margin:0 0 10px 0;font-size:18px;'>✅ 复制成功！</h3><p style='margin:0;font-size:14px;line-height:1.6;'>Token: ${t}<br>已复制到剪贴板<br><br>现在可以粘贴到网站了</p></div>`;document.body.appendChild(div);setTimeout(()=>div.remove(),5000)}catch(e){alert('发生错误：'+e.message)}})();" 
                        class="bookmarklet-btn" 
-                       onclick="showBookmarkInstructions(); return false;">
+                       id="bookmarkBtn">
                         📋 一键复制微信凭证
                     </a>
-                    <p class="hint">👆 右键点击 → 添加到书签</p>
+                    <p class="hint" style="color: #d9534f; font-weight: bold; margin-top: 15px;">
+                        ⚠️ Chrome 不支持右键添加书签！请使用以下方法：
+                    </p>
+                    <div style="background: white; padding: 15px; border-radius: 8px; margin-top: 10px; text-align: left;">
+                        <p style="color: #333; margin-bottom: 10px;"><strong>方法1：显示书签栏后拖拽（推荐）</strong></p>
+                        <ol style="margin-left: 20px; color: #555; line-height: 1.8;">
+                            <li>按 <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">Ctrl+Shift+B</code> 显示书签栏</li>
+                            <li><strong>按住鼠标左键</strong>拖动上面的按钮到书签栏</li>
+                            <li>松开鼠标，书签添加完成</li>
+                        </ol>
+                        <p style="color: #333; margin: 15px 0 10px 0;"><strong>方法2：手动创建书签</strong></p>
+                        <ol style="margin-left: 20px; color: #555; line-height: 1.8;">
+                            <li>右键点击书签栏空白处 → <strong>添加网页</strong></li>
+                            <li>名称填：<code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">一键复制微信凭证</code></li>
+                            <li>点击下面的 <button onclick="copyBookmarkletCode()" style="background: #667eea; color: white; border: none; padding: 5px 15px; border-radius: 5px; cursor: pointer;">复制书签代码</button> 并粘贴到网址</li>
+                            <li>点击保存</li>
+                        </ol>
+                    </div>
                 </div>
-                <p>添加后，在微信公众平台点击这个书签即可提取。</p>
             </div>
         </div>
 
@@ -244,6 +260,20 @@ console.log('Cookies:', document.cookie);</div>
     </div>
 
     <script>
+        // 复制书签代码
+        function copyBookmarkletCode() {
+            const code = document.getElementById('bookmarkBtn').href;
+            const textarea = document.createElement('textarea');
+            textarea.value = code;
+            textarea.style.position = 'fixed';
+            textarea.style.top = '-9999px';
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            alert('✅ 书签代码已复制！\n\n下一步：\n1. 右键书签栏空白处\n2. 选择"添加网页"\n3. 名称填：一键复制微信凭证\n4. 网址粘贴刚复制的代码\n5. 保存');
+        }
+
         function copyManualCode() {
             const code = document.getElementById('manualCode').textContent;
             const textarea = document.createElement('textarea');
