@@ -44,7 +44,7 @@ function connectWebSocket() {
         if (data.type === 'log') {
             appendLog(data.message);
         } else if (data.type === 'download_complete') {
-            handleDownloadComplete(data.key_used);
+            handleDownloadComplete(data.key_used, data.zip_file);
         }
     };
     
@@ -341,7 +341,7 @@ async function handlePauseResume() {
 }
 
 // 下载完成
-function handleDownloadComplete(keyUsed) {
+function handleDownloadComplete(keyUsed, zipFile) {
     isDownloading = false;
     isPaused = false;
     startBtn.disabled = false;
@@ -349,15 +349,50 @@ function handleDownloadComplete(keyUsed) {
     pauseBtn.textContent = '⏸ 暂停';
     updateStatus('● 就绪');
     
+    // 如果有ZIP文件，显示下载按钮
+    if (zipFile) {
+        showDownloadButton(zipFile);
+    }
+    
     // 如果激活码已使用，弹出提示
     if (keyUsed) {
         setTimeout(() => {
-            alert('✅ 下载完成！\n\n⚠️  当前激活码已失效，如需继续下载请更换新的激活码。');
+            const message = zipFile 
+                ? '✅ 下载完成！文件已打包，请点击下载按钮保存到本地。\n\n⚠️  当前激活码已失效，如需继续下载请更换新的激活码。'
+                : '✅ 下载完成！\n\n⚠️  当前激活码已失效，如需继续下载请更换新的激活码。';
+            alert(message);
             // 清空激活码输入框，提示用户输入新激活码
             activationKeyInput.value = '';
             activationKeyInput.focus();
         }, 500);
     }
+}
+
+// 显示下载按钮
+function showDownloadButton(zipFile) {
+    // 移除旧的下载按钮
+    const oldBtn = document.getElementById('downloadZipBtn');
+    if (oldBtn) {
+        oldBtn.remove();
+    }
+    
+    // 创建下载按钮
+    const downloadBtn = document.createElement('button');
+    downloadBtn.id = 'downloadZipBtn';
+    downloadBtn.className = 'btn btn-success';
+    downloadBtn.style.marginTop = '15px';
+    downloadBtn.innerHTML = '📥 下载文件到本地';
+    downloadBtn.onclick = () => {
+        window.location.href = `/api/download_file/${zipFile}`;
+        appendLog('[INFO] 开始下载文件...');
+    };
+    
+    // 添加到按钮组
+    const buttonGroup = document.querySelector('.button-group');
+    buttonGroup.appendChild(downloadBtn);
+    
+    // 添加日志提示
+    appendLog('[SUCCESS] 💾 点击"下载文件到本地"按钮保存文件');
 }
 
 // 添加日志

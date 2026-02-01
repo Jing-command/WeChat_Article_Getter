@@ -19,6 +19,9 @@ from typing import Optional, Dict
 import base64
 from contextlib import redirect_stdout, redirect_stderr
 from collections import defaultdict
+import zipfile
+import shutil
+from pathlib import Path
 
 from core.engine import CrawlerEngine
 from activation_key_generator import ActivationKeyGenerator
@@ -196,6 +199,8 @@ class AppState:
         self.active_websockets = []
         self.current_activation_key = None  # 当前使用的激活码
         self.current_key_type = None  # 当前激活码类型
+        self.last_download_path = None  # 上次下载的路径
+        self.last_zip_file = None  # 上次生成的 ZIP 文件路径
     
     def add_websocket(self, websocket):
         self.active_websockets.append(websocket)
@@ -635,6 +640,15 @@ async def run_download_async(request: DownloadRequest):
         else:
             await state.broadcast_log(f"文章《{articles[0]['title']}》下载完成！")
         
+        # 打包成 ZIP
+        await state.broadcast_log(f"[INFO] 正在打包文件...")
+        zip_filename = create_zip_package(request.download_path)
+        if zip_filename:
+            state.last_zip_file = zip_filename
+            await state.broadcast_log(f"[SUCCESS] ✅ 文件已打包完成！点击下方按钮下载到本地")
+        else:
+            await state.broadcast_log(f"[WARN] 打包失败，但文件已保存在服务器")
+        
         # 下载成功完成，标记激活码为已使用
         if state.current_activation_key:
             key_generator.mark_as_used(state.current_activation_key)
@@ -642,10 +656,14 @@ async def run_download_async(request: DownloadRequest):
             await state.broadcast_log(f"[INFO] 激活码 {state.current_activation_key} 已使用 (类型: {key_type_name})")
             await state.broadcast_log(f"[WARN] ⚠️  该激活码已失效，如需继续下载请使用新的激活码")
         
-        # 广播完成状态
+        # 广播完成状态，包含下载文件名
         for ws in state.active_websockets:
             try:
-                await ws.send_json({"type": "download_complete", "key_used": True})
+                await ws.send_json({
+                    "type": "download_complete", 
+                    "key_used": True,
+                    "zip_file": os.path.basename(zip_filename) if zip_filename else None
+                })
             except:
                 pass
     
@@ -671,7 +689,74 @@ def check_pause_sync():
         import time
         while state.is_paused and state.is_downloading:
             time.sleep(0.5)
-    return not state.is_downloading
+
+def create_zip_package(download_path: str) -> Optional[str]:
+    """
+    将下载的文件打包成 ZIP
+    
+    Args:
+        download_path: 下载目录路径
+        
+    Returns:
+        ZIP文件的绝对路径，失败返回 None
+    """
+    try:
+        # 创建临时ZIP目录
+        zip_dir = Path("temp_zips")
+        zip_dir.mkdir(exist_ok=True)
+        
+        # 生成ZIP文件名（带时间戳）
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        zip_filename = f"wechat_articles_{timestamp}.zip"
+        zip_path = zip_dir / zip_filename
+        
+        # 检查下载目录是否存在
+        download_dir = Path(download_path)
+        if not download_dir.exists():
+            print(f"[ERROR] 下载目录不存在: {download_path}")
+            return None
+        
+        # 创建ZIP文件
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            # 遍历下载目录中的所有文件
+            for file_path in download_dir.rglob('*'):
+                if file_path.is_file():
+                    # 计算相对路径
+                    arcname = file_path.relative_to(download_dir)
+                    zipf.write(file_path, arcname)
+        
+        print(f"[SUCCESS] ZIP打包完成: {zip_path}")
+        
+        # 打包成功后删除原文件
+        try:
+            shutil.rmtree(download_dir)
+            print(f"[CLEANUP] 已删除原始下载目录: {download_path}")
+        except Exception as e:
+            print(f"[WARN] 删除原始文件失败: {e}")
+        
+        return str(zip_path)
+    
+    except Exception as e:
+        print(f"[ERROR] ZIP打包失败: {e}")
+        return None
+
+def cleanup_old_zips():
+    """清理超过24小时的ZIP文件"""
+    try:
+        zip_dir = Path("temp_zips")
+        if not zip_dir.exists():
+            return
+        
+        cutoff_time = datetime.now() - timedelta(hours=24)
+        
+        for zip_file in zip_dir.glob("*.zip"):
+            file_time = datetime.fromtimestamp(zip_file.stat().st_mtime)
+            if file_time < cutoff_time:
+                zip_file.unlink()
+                print(f"[CLEANUP] 已删除过期ZIP: {zip_file.name}")
+    
+    except Exception as e:
+        print(f"[ERROR] 清理ZIP文件失败: {e}")
 
 @app.post("/api/pause")
 async def pause_download():
@@ -707,8 +792,39 @@ async def get_status():
         "is_paused": state.is_paused
     }
 
+@app.get("/api/download_file/{filename}")
+async def download_zip_file(filename: str):
+    """下载ZIP文件"""
+    try:
+        # 安全检查：只允许下载temp_zips目录下的zip文件
+        if not filename.endswith('.zip') or '..' in filename or '/' in filename:
+            raise HTTPException(status_code=400, detail="无效的文件名")
+        
+        zip_path = Path("temp_zips") / filename
+        
+        if not zip_path.exists():
+            raise HTTPException(status_code=404, detail="文件不存在或已过期")
+        
+        # 清理旧文件
+        cleanup_old_zips()
+        
+        return FileResponse(
+            path=str(zip_path),
+            filename=filename,
+            media_type='application/zip'
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"下载失败: {str(e)}")
+
 if __name__ == "__main__":
     import uvicorn
     print("🚀 启动微信文章下载器 Web服务...")
     print("📱 请在浏览器中访问: http://localhost:8000")
+    
+    # 启动时清理旧ZIP文件
+    cleanup_old_zips()
+    
     uvicorn.run(app, host="0.0.0.0", port=8000)

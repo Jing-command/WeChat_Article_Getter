@@ -208,6 +208,15 @@ body {
     background: #d97706;
 }
 
+.btn-success {
+    background: #10b981;
+    color: white;
+}
+
+.btn-success:hover:not(:disabled) {
+    background: #059669;
+}
+
 .btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
