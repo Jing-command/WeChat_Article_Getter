@@ -3,20 +3,22 @@ FastAPI Web应用 - 微信文章下载器
 提供Web界面实现GUI的所有功能
 """
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import asyncio
 import json
 import os
 import sys
 import io
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timedelta
+from typing import Optional, Dict
 import base64
 from contextlib import redirect_stdout, redirect_stderr
+from collections import defaultdict
 
 from core.engine import CrawlerEngine
 from activation_key_generator import ActivationKeyGenerator
@@ -26,6 +28,151 @@ app = FastAPI(title="微信文章下载器")
 
 # 初始化激活码生成器
 key_generator = ActivationKeyGenerator()
+
+# 配置CORS - 只允许你的域名访问
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://jing-command.me",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000"
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
+
+# 速率限制配置
+class RateLimiter:
+    def __init__(self):
+        # IP访问记录: {ip: {endpoint: [(timestamp, count)]}}
+        self.requests: Dict[str, Dict[str, list]] = defaultdict(lambda: defaultdict(list))
+        # 失败尝试记录: {ip: [(timestamp, endpoint)]}
+        self.failed_attempts: Dict[str, list] = defaultdict(list)
+        # 黑名单: {ip: block_until_timestamp}
+        self.blacklist: Dict[str, datetime] = {}
+        
+        # 限制规则
+        self.VERIFY_KEY_LIMIT = 10  # 10次/分钟
+        self.DOWNLOAD_LIMIT = 5     # 5次/分钟
+        self.GENERAL_LIMIT = 60     # 60次/分钟（一般请求）
+        self.WINDOW = 60            # 时间窗口（秒）
+        self.MAX_FAILED = 20        # 20次失败后封禁
+        self.BAN_DURATION = 3600    # 封禁时长（秒）
+    
+    def _clean_old_records(self, ip: str, endpoint: str):
+        """清理过期记录"""
+        now = datetime.now()
+        cutoff = now - timedelta(seconds=self.WINDOW)
+        
+        if ip in self.requests and endpoint in self.requests[ip]:
+            self.requests[ip][endpoint] = [
+                (ts, count) for ts, count in self.requests[ip][endpoint]
+                if ts > cutoff
+            ]
+    
+    def _clean_failed_attempts(self, ip: str):
+        """清理过期失败记录"""
+        now = datetime.now()
+        cutoff = now - timedelta(seconds=self.WINDOW * 10)  # 保留10分钟内的失败记录
+        
+        if ip in self.failed_attempts:
+            self.failed_attempts[ip] = [
+                (ts, ep) for ts, ep in self.failed_attempts[ip]
+                if ts > cutoff
+            ]
+    
+    def is_blocked(self, ip: str) -> bool:
+        """检查IP是否被封禁"""
+        if ip in self.blacklist:
+            if datetime.now() < self.blacklist[ip]:
+                return True
+            else:
+                del self.blacklist[ip]
+        return False
+    
+    def check_rate_limit(self, ip: str, endpoint: str) -> bool:
+        """检查是否超过速率限制"""
+        # 检查黑名单
+        if self.is_blocked(ip):
+            return False
+        
+        # 清理过期记录
+        self._clean_old_records(ip, endpoint)
+        self._clean_failed_attempts(ip)
+        
+        # 确定限制
+        if "verify_key" in endpoint:
+            limit = self.VERIFY_KEY_LIMIT
+        elif "download" in endpoint:
+            limit = self.DOWNLOAD_LIMIT
+        else:
+            limit = self.GENERAL_LIMIT
+        
+        # 统计当前窗口内的请求数
+        current_count = sum(count for _, count in self.requests[ip][endpoint])
+        
+        if current_count >= limit:
+            return False
+        
+        # 记录本次请求
+        now = datetime.now()
+        self.requests[ip][endpoint].append((now, 1))
+        return True
+    
+    def record_failure(self, ip: str, endpoint: str):
+        """记录失败尝试"""
+        now = datetime.now()
+        self.failed_attempts[ip].append((now, endpoint))
+        
+        # 检查是否需要封禁
+        if len(self.failed_attempts[ip]) >= self.MAX_FAILED:
+            self.blacklist[ip] = now + timedelta(seconds=self.BAN_DURATION)
+            print(f"[SECURITY] IP {ip} 已被封禁 {self.BAN_DURATION}秒（失败尝试过多）")
+    
+    def get_remaining_time(self, ip: str) -> int:
+        """获取封禁剩余时间"""
+        if ip in self.blacklist:
+            remaining = (self.blacklist[ip] - datetime.now()).total_seconds()
+            return max(0, int(remaining))
+        return 0
+
+rate_limiter = RateLimiter()
+
+# 速率限制中间件
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """全局速率限制中间件"""
+    client_ip = request.client.host
+    endpoint = request.url.path
+    
+    # 跳过静态文件检查
+    if endpoint.startswith("/static/"):
+        return await call_next(request)
+    
+    # 检查是否被封禁
+    if rate_limiter.is_blocked(client_ip):
+        remaining = rate_limiter.get_remaining_time(client_ip)
+        return JSONResponse(
+            status_code=429,
+            content={
+                "success": False,
+                "message": f"请求过于频繁，已被暂时封禁。请在 {remaining} 秒后重试。"
+            }
+        )
+    
+    # 检查速率限制
+    if not rate_limiter.check_rate_limit(client_ip, endpoint):
+        return JSONResponse(
+            status_code=429,
+            content={
+                "success": False,
+                "message": "请求过于频繁，请稍后再试。"
+            }
+        )
+    
+    response = await call_next(request)
+    return response
 
 # 静态文件和模板
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -242,8 +389,9 @@ async def login():
     return {"success": False, "message": "请使用手动输入Token和Cookies的方式"}
 
 @app.post("/api/verify_key")
-async def verify_activation_key(request: dict):
+async def verify_activation_key(request: dict, req: Request):
     """验证激活码有效性"""
+    client_ip = req.client.host
     activation_key = request.get("activation_key", "").strip()
     
     if not activation_key:
@@ -252,6 +400,7 @@ async def verify_activation_key(request: dict):
     # 验证格式
     import re
     if not re.match(r'^[SB]-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$', activation_key):
+        rate_limiter.record_failure(client_ip, "/api/verify_key")
         return {"valid": False, "message": "格式错误", "type": None}
     
     # 判断类型
@@ -269,6 +418,8 @@ async def verify_activation_key(request: dict):
             "type_name": type_name
         }
     else:
+        # 记录失败尝试
+        rate_limiter.record_failure(client_ip, "/api/verify_key")
         return {
             "valid": False, 
             "message": "无效或已使用", 
