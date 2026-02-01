@@ -19,9 +19,13 @@ import base64
 from contextlib import redirect_stdout, redirect_stderr
 
 from core.engine import CrawlerEngine
+from activation_key_generator import ActivationKeyGenerator
 
 # 初始化FastAPI应用
 app = FastAPI(title="微信文章下载器")
+
+# 初始化激活码生成器
+key_generator = ActivationKeyGenerator()
 
 # 静态文件和模板
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -36,6 +40,8 @@ class AppState:
         self.download_task = None
         self.log_buffer = io.StringIO()
         self.active_websockets = []
+        self.current_activation_key = None  # 当前使用的激活码
+        self.current_key_type = None  # 当前激活码类型
     
     def add_websocket(self, websocket):
         self.active_websockets.append(websocket)
@@ -59,6 +65,7 @@ class DownloadRequest(BaseModel):
     url: str
     token: str
     cookies: str
+    activation_key: str  # 新增：激活码字段
     single_mode: bool = True
     batch_mode: bool = False
     date_mode: bool = False
@@ -135,6 +142,28 @@ async def start_download(request: DownloadRequest):
     """开始下载"""
     if state.is_downloading:
         return {"success": False, "message": "已有下载任务在进行中"}
+    
+    # 验证激活码
+    activation_key = request.activation_key.strip()
+    
+    # 判断下载模式并验证对应类型的激活码
+    if request.batch_mode or request.date_mode:
+        # 批量下载（包括日期范围下载），需要批量激活码
+        if not key_generator.verify_key(activation_key, "batch"):
+            await state.broadcast_log("[ERROR] 批量下载（包括日期范围下载）需要有效的批量下载激活码 (B- 开头)")
+            return {"success": False, "message": "激活码无效或已被使用，批量下载（包括日期范围下载）需要使用 B- 开头的激活码"}
+        key_type = "batch"
+    else:
+        # 单次下载，需要单次激活码
+        if not key_generator.verify_key(activation_key, "single"):
+            await state.broadcast_log("[ERROR] 单次下载需要有效的单次下载激活码 (S- 开头)")
+            return {"success": False, "message": "激活码无效或已被使用，单次下载需要使用 S- 开头的激活码"}
+        key_type = "single"
+    
+    # 保存当前激活码信息，等下载成功后再标记为已使用
+    state.current_activation_key = activation_key
+    state.current_key_type = key_type
+    await state.broadcast_log(f"[SUCCESS] 激活码验证通过 (类型: {'批量下载' if key_type == 'batch' else '单次下载'})")
     
     # 重定向标准输出到WebSocket
     sys.stdout = WebLogger(state)
@@ -248,10 +277,17 @@ async def run_download_async(request: DownloadRequest):
         else:
             await state.broadcast_log(f"文章《{articles[0]['title']}》下载完成！")
         
+        # 下载成功完成，标记激活码为已使用
+        if state.current_activation_key:
+            key_generator.mark_as_used(state.current_activation_key)
+            key_type_name = "批量下载" if state.current_key_type == "batch" else "单次下载"
+            await state.broadcast_log(f"[INFO] 激活码 {state.current_activation_key} 已使用 (类型: {key_type_name})")
+            await state.broadcast_log(f"[WARN] ⚠️  该激活码已失效，如需继续下载请使用新的激活码")
+        
         # 广播完成状态
         for ws in state.active_websockets:
             try:
-                await ws.send_json({"type": "download_complete"})
+                await ws.send_json({"type": "download_complete", "key_used": True})
             except:
                 pass
     
@@ -260,8 +296,14 @@ async def run_download_async(request: DownloadRequest):
         import traceback
         error_trace = traceback.format_exc()
         await state.broadcast_log(error_trace)
+        
+        # 下载失败，不标记激活码为已使用
+        await state.broadcast_log(f"[INFO] 由于下载失败，激活码未被消耗，可以重新尝试")
     
     finally:
+        # 清空当前激活码信息
+        state.current_activation_key = None
+        state.current_key_type = None
         state.is_downloading = False
         state.is_paused = False
 

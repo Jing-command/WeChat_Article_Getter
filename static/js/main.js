@@ -5,6 +5,7 @@ let isPaused = false;
 
 // DOM元素
 const urlInput = document.getElementById('urlInput');
+const activationKeyInput = document.getElementById('activationKeyInput');
 const tokenInput = document.getElementById('tokenInput');
 const cookiesInput = document.getElementById('cookiesInput');
 const startBtn = document.getElementById('startBtn');
@@ -42,7 +43,7 @@ function connectWebSocket() {
         if (data.type === 'log') {
             appendLog(data.message);
         } else if (data.type === 'download_complete') {
-            handleDownloadComplete();
+            handleDownloadComplete(data.key_used);
         }
     };
     
@@ -134,6 +135,32 @@ async function handleStartDownload() {
         return;
     }
     
+    const activationKey = activationKeyInput.value.trim();
+    if (!activationKey) {
+        alert('请输入激活码');
+        return;
+    }
+    
+    // 验证激活码格式
+    if (!activationKey.match(/^[SB]-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$/)) {
+        alert('激活码格式不正确\n正确格式：S-XXXX-XXXX-XXXX-XXXX 或 B-XXXX-XXXX-XXXX-XXXX');
+        return;
+    }
+    
+    // 验证激活码类型与下载模式匹配
+    const isBatchMode = batchMode.checked || dateMode.checked;
+    const keyType = activationKey.charAt(0);
+    
+    if (isBatchMode && keyType !== 'B') {
+        alert('批量下载（包括日期范围下载）需要使用 B- 开头的激活码');
+        return;
+    }
+    
+    if (!isBatchMode && keyType !== 'S') {
+        alert('单次下载需要使用 S- 开头的激活码');
+        return;
+    }
+    
     const token = tokenInput.value.trim();
     if (!token) {
         alert('请输入Token（在微信公众平台登录后获取）');
@@ -177,6 +204,7 @@ async function handleStartDownload() {
     
     const requestData = {
         url: url,
+        activation_key: activationKey,
         token: token,
         cookies: cookies,
         single_mode: singleMode.checked,
@@ -263,13 +291,23 @@ async function handlePauseResume() {
 }
 
 // 下载完成
-function handleDownloadComplete() {
+function handleDownloadComplete(keyUsed) {
     isDownloading = false;
     isPaused = false;
     startBtn.disabled = false;
     pauseBtn.disabled = true;
     pauseBtn.textContent = '⏸ 暂停';
     updateStatus('● 就绪');
+    
+    // 如果激活码已使用，弹出提示
+    if (keyUsed) {
+        setTimeout(() => {
+            alert('✅ 下载完成！\n\n⚠️  当前激活码已失效，如需继续下载请更换新的激活码。');
+            // 清空激活码输入框，提示用户输入新激活码
+            activationKeyInput.value = '';
+            activationKeyInput.focus();
+        }, 500);
+    }
 }
 
 // 添加日志
