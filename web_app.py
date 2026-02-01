@@ -3,16 +3,22 @@ FastAPI Web应用 - 微信文章下载器
 提供Web界面实现GUI的所有功能
 """
 
+import os
+import sys
+
+# 禁用 Python 输出缓冲，确保日志实时输出
+os.environ['PYTHONUNBUFFERED'] = '1'
+sys.stdout.reconfigure(line_buffering=True) if hasattr(sys.stdout, 'reconfigure') else None
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel, ValidationError
 import asyncio
 import json
-import os
-import sys
 import io
 from datetime import datetime, timedelta
 from typing import Optional, Dict
@@ -31,6 +37,19 @@ app = FastAPI(title="微信文章下载器")
 
 # 初始化激活码生成器
 key_generator = ActivationKeyGenerator()
+
+# 添加验证错误处理器
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """处理请求验证错误"""
+    print(f"[VALIDATION ERROR] {exc.errors()}")
+    return JSONResponse(
+        status_code=422,
+        content={
+            "success": False,
+            "message": f"请求数据验证失败: {exc.errors()}"
+        }
+    )
 
 # 配置CORS - 只允许你的域名访问
 app.add_middleware(
@@ -253,8 +272,7 @@ def sanitize_log(message: str) -> str:
 # Pydantic模型定义
 class DownloadRequest(BaseModel):
     url: str
-    token: str
-    cookies: str
+    credentials: str  # 合并的凭证字段
     activation_key: str  # 新增：激活码字段
     single_mode: bool = True
     batch_mode: bool = False
@@ -265,9 +283,9 @@ class DownloadRequest(BaseModel):
     download_path: str
 
 # 自定义日志输出类
-class WebLogger(io.StringIO):
+class WebLogger:
+    """无缓冲的 WebSocket 日志输出"""
     def __init__(self, state: AppState):
-        super().__init__()
         self.state = state
         self.loop = None
     
@@ -280,16 +298,72 @@ class WebLogger(io.StringIO):
                 except RuntimeError:
                     return len(message)
             
-            # 在事件循环中调度协程
+            # 在事件循环中调度协程（立即执行）
             if self.loop and self.loop.is_running():
-                asyncio.run_coroutine_threadsafe(
+                future = asyncio.run_coroutine_threadsafe(
                     self.state.broadcast_log(message.strip()),
                     self.loop
                 )
+                # 等待一小段时间确保发送
+                try:
+                    future.result(timeout=0.1)
+                except:
+                    pass
         return len(message)
     
     def flush(self):
+        """立即刷新缓冲区"""
         pass
+    
+    def isatty(self):
+        return False
+
+# 辅助函数：解析凭证字符串
+def parse_credentials(credentials: str) -> tuple:
+    """
+    自动解析凭证字符串，提取 Token 和 Cookies
+    
+    Args:
+        credentials: 包含 Token 和 Cookies 的字符串
+        
+    Returns:
+        (token, cookies) 元组
+    """
+    import re
+    
+    lines = credentials.strip().split('\n')
+    token = None
+    cookies = None
+    
+    # 遍历每一行查找 token 和 cookies
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+            
+        # 匹配 token: 开头的行（不区分大小写，支持中英文冒号）
+        token_match = re.match(r'^token[：:]\s*(.+)$', line, re.IGNORECASE)
+        if token_match:
+            token = token_match.group(1).strip()
+            continue
+        
+        # 匹配 cookies: 开头的行（不区分大小写，支持中英文冒号）
+        cookies_match = re.match(r'^cookies[：:]\s*(.+)$', line, re.IGNORECASE)
+        if cookies_match:
+            cookies = cookies_match.group(1).strip()
+            continue
+        
+        # 如果行中包含 = 且包含 ; 可能是 cookies（没有前缀）
+        if '=' in line and ';' in line and not cookies:
+            cookies = line
+            continue
+        
+        # 如果是纯数字（8-12位）可能是 token（没有前缀）
+        if re.match(r'^\d{8,12}$', line) and not token:
+            token = line
+            continue
+    
+    return token, cookies
 
 # 路由定义
 @app.get("/", response_class=HTMLResponse)
@@ -495,17 +569,26 @@ async def start_download(request: DownloadRequest, req: Request):
     if not request.url or not request.url.strip():
         return {"success": False, "message": "请输入公众号名称或文章链接"}
     
-    if not request.token or not request.token.strip():
-        return {"success": False, "message": "请输入 Token"}
+    if not request.credentials or not request.credentials.strip():
+        return {"success": False, "message": "请输入登录凭证（Token 和 Cookies）"}
     
-    if not request.cookies or not request.cookies.strip():
-        return {"success": False, "message": "请输入 Cookies"}
+    # 解析凭证
+    token, cookies = parse_credentials(request.credentials)
     
-    # Token 格式验证（应该是10位数字）
-    import re
-    if not re.match(r'^\d{10}$', request.token.strip()):
+    if not token:
         rate_limiter.record_failure(client_ip, "/api/download")
-        return {"success": False, "message": "Token 格式错误，应为10位数字"}
+        return {"success": False, "message": "未找到 Token，请确保输入包含 Token（8-12位数字）"}
+    
+    if not cookies:
+        rate_limiter.record_failure(client_ip, "/api/download")
+        return {"success": False, "message": "未找到 Cookies，请确保输入包含 Cookies"}
+    
+    # Token 格式验证（通常是8-12位数字）
+    import re
+    token_stripped = token.strip()
+    if not re.match(r'^\d{8,12}$', token_stripped):
+        rate_limiter.record_failure(client_ip, "/api/download")
+        return {"success": False, "message": "Token 格式错误，应为8-12位数字"}
     
     # 路径验证（防止路径注入）
     download_path = request.download_path.strip()
@@ -537,7 +620,7 @@ async def start_download(request: DownloadRequest, req: Request):
     state.current_key_type = key_type
     
     # 脱敏日志（Token 脱敏，激活码不脱敏）
-    safe_token = sanitize_sensitive_data(request.token, 3)
+    safe_token = sanitize_sensitive_data(token, 3)
     await state.broadcast_log(f"[SUCCESS] 激活码验证通过 (类型: {'批量下载' if key_type == 'batch' else '单次下载'}, Key: {activation_key})")
     await state.broadcast_log(f"[INFO] Token: {safe_token}, IP: {client_ip}")
     
@@ -552,12 +635,12 @@ async def start_download(request: DownloadRequest, req: Request):
     
     # 创建下载任务
     state.download_task = asyncio.create_task(
-        run_download_async(request)
+        run_download_async(request, token, cookies)
     )
     
     return {"success": True, "message": "下载任务已启动"}
 
-async def run_download_async(request: DownloadRequest):
+async def run_download_async(request: DownloadRequest, token: str, cookies: str):
     """异步下载函数"""
     try:
         await state.broadcast_log(f"\n[TASK] 开始处理链接: {request.url}")
@@ -575,7 +658,7 @@ async def run_download_async(request: DownloadRequest):
         cookies_dict = {}
         try:
             # 解析cookies字符串: "name=value; name2=value2"
-            cookie_pairs = request.cookies.split(';')
+            cookie_pairs = cookies.split(';')
             for pair in cookie_pairs:
                 if '=' in pair:
                     name, value = pair.strip().split('=', 1)
@@ -587,12 +670,12 @@ async def run_download_async(request: DownloadRequest):
             await state.broadcast_log(f"[ERROR] Cookies解析失败: {str(e)}")
             return
         
-        if not cookies_dict or not request.token:
+        if not cookies_dict or not token:
             await state.broadcast_log("[ERROR] 登录凭证无效")
             return
         
         # 初始化引擎
-        state.engine = CrawlerEngine(cookies_dict, request.token, output_dir=request.download_path)
+        state.engine = CrawlerEngine(cookies_dict, token, output_dir=request.download_path)
         state.engine.pause_check_callback = check_pause_sync
         
         articles = []
@@ -603,14 +686,18 @@ async def run_download_async(request: DownloadRequest):
             
             if request.url.startswith('http://') or request.url.startswith('https://'):
                 await state.broadcast_log("[INFO] 检测到链接，正在从链接解析公众号信息...")
-                fakeid = state.engine.extract_fakeid_from_url(request.url)
+                # 在线程池中运行
+                loop = asyncio.get_event_loop()
+                fakeid = await loop.run_in_executor(None, state.engine.extract_fakeid_from_url, request.url)
                 
                 if not fakeid:
                     await state.broadcast_log("[WARN] 无法从链接中提取公众号信息")
                     return
             else:
                 await state.broadcast_log(f"[INFO] 检测到公众号名称，正在搜索: {request.url}")
-                fakeid = state.engine.search_account(request.url)
+                # 在线程池中运行同步方法，避免阻塞事件循环
+                loop = asyncio.get_event_loop()
+                fakeid = await loop.run_in_executor(None, state.engine.search_account, request.url)
             
             if not fakeid:
                 await state.broadcast_log("[ERROR] 无法找到目标公众号")
@@ -620,10 +707,14 @@ async def run_download_async(request: DownloadRequest):
             
             if request.date_mode:
                 await state.broadcast_log(f"[INFO] 正在获取 {request.start_date} 至 {request.end_date} 期间的文章...")
-                articles = state.engine.get_articles_by_date(fakeid, request.start_date, request.end_date)
+                # 在线程池中运行
+                loop = asyncio.get_event_loop()
+                articles = await loop.run_in_executor(None, state.engine.get_articles_by_date, fakeid, request.start_date, request.end_date)
             else:
                 await state.broadcast_log(f"[INFO] 正在获取最近 {request.count} 篇文章...")
-                articles = state.engine.get_articles(fakeid, request.count)
+                # 在线程池中运行
+                loop = asyncio.get_event_loop()
+                articles = await loop.run_in_executor(None, state.engine.get_articles, fakeid, request.count)
             
             if not articles:
                 await state.broadcast_log("[ERROR] 未获取到文章列表")
@@ -634,7 +725,9 @@ async def run_download_async(request: DownloadRequest):
         else:
             # 单篇下载
             await state.broadcast_log("[INFO] 正在获取文章元数据...")
-            article_info = state.engine.fetch_article_metadata(request.url)
+            # 在线程池中运行
+            loop = asyncio.get_event_loop()
+            article_info = await loop.run_in_executor(None, state.engine.fetch_article_metadata, request.url)
             
             if not article_info:
                 await state.broadcast_log("[ERROR] 无法解析文章信息，请检查链接是否正确")
@@ -643,8 +736,9 @@ async def run_download_async(request: DownloadRequest):
             await state.broadcast_log(f"[INFO] 识别到文章: {article_info['title']}")
             articles = [article_info]
         
-        # 下载内容
-        state.engine.download_articles_content(articles)
+        # 下载内容 - 在线程池中运行
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, state.engine.download_articles_content, articles)
         
         await state.broadcast_log(f"[SUCCESS] 任务完成！")
         if request.batch_mode:
@@ -745,7 +839,7 @@ def create_zip_package(download_path: str) -> Optional[str]:
         # 打包成功后删除原文件
         try:
             shutil.rmtree(download_dir)
-            print(f"[CLEANUP] 已删除原始下载目录: {download_path}")
+            # 静默删除，不输出日志
         except Exception as e:
             print(f"[WARN] 删除原始文件失败: {e}")
         

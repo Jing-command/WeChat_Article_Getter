@@ -7,8 +7,7 @@ let isPaused = false;
 const urlInput = document.getElementById('urlInput');
 const activationKeyInput = document.getElementById('activationKeyInput');
 const keyStatus = document.getElementById('keyStatus');
-const tokenInput = document.getElementById('tokenInput');
-const cookiesInput = document.getElementById('cookiesInput');
+const credentialsInput = document.getElementById('credentialsInput');
 const startBtn = document.getElementById('startBtn');
 const pauseBtn = document.getElementById('pauseBtn');
 const singleMode = document.getElementById('singleMode');
@@ -211,15 +210,9 @@ async function handleStartDownload() {
         return;
     }
     
-    const token = tokenInput.value.trim();
-    if (!token) {
-        alert('请输入Token（在微信公众平台登录后获取）');
-        return;
-    }
-    
-    const cookies = cookiesInput.value.trim();
-    if (!cookies) {
-        alert('请输入Cookies（在微信公众平台登录后获取）');
+    const credentials = credentialsInput.value.trim();
+    if (!credentials) {
+        alert('请输入登录凭证（Token 和 Cookies）');
         return;
     }
     
@@ -255,8 +248,7 @@ async function handleStartDownload() {
     const requestData = {
         url: url,
         activation_key: activationKey,
-        token: token,
-        cookies: cookies,
+        credentials: credentials,
         single_mode: singleMode.checked,
         batch_mode: batchMode.checked,
         date_mode: dateMode.checked,
@@ -270,6 +262,13 @@ async function handleStartDownload() {
     pauseBtn.disabled = false;
     isDownloading = true;
     updateStatus('● 下载中...');
+    
+    // 禁用下载按钮
+    const downloadZipBtn = document.getElementById('downloadZipBtn');
+    if (downloadZipBtn) {
+        downloadZipBtn.disabled = true;
+        downloadZipBtn.title = '下载完成之后才能下载压缩包';
+    }
     
     try {
         const response = await fetch('/api/download', {
@@ -370,26 +369,17 @@ function handleDownloadComplete(keyUsed, zipFile) {
 
 // 显示下载按钮
 function showDownloadButton(zipFile) {
-    // 移除旧的下载按钮
-    const oldBtn = document.getElementById('downloadZipBtn');
-    if (oldBtn) {
-        oldBtn.remove();
+    // 获取已存在的下载按钮
+    const downloadBtn = document.getElementById('downloadZipBtn');
+    if (downloadBtn) {
+        // 启用按钮并更新提示
+        downloadBtn.disabled = false;
+        downloadBtn.title = '点击下载压缩包到本地';
+        downloadBtn.onclick = () => {
+            window.location.href = `/api/download_file/${zipFile}`;
+            appendLog('[INFO] 开始下载文件...');
+        };
     }
-    
-    // 创建下载按钮
-    const downloadBtn = document.createElement('button');
-    downloadBtn.id = 'downloadZipBtn';
-    downloadBtn.className = 'btn btn-success';
-    downloadBtn.style.marginTop = '15px';
-    downloadBtn.innerHTML = '📥 下载文件到本地';
-    downloadBtn.onclick = () => {
-        window.location.href = `/api/download_file/${zipFile}`;
-        appendLog('[INFO] 开始下载文件...');
-    };
-    
-    // 添加到按钮组
-    const buttonGroup = document.querySelector('.button-group');
-    buttonGroup.appendChild(downloadBtn);
     
     // 添加日志提示
     appendLog('[SUCCESS] 💾 点击"下载文件到本地"按钮保存文件');

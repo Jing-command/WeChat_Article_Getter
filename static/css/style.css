@@ -59,6 +59,7 @@ body {
     gap: 20px;
     flex: 1;
     min-height: 0;
+    align-items: stretch;
 }
 
 /* 左侧面板 */
@@ -70,6 +71,7 @@ body {
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    max-height: calc(100vh - 200px);
 }
 
 .scrollable-content {
@@ -104,6 +106,7 @@ body {
     display: flex;
     flex-direction: column;
     min-width: 0;
+    max-height: calc(100vh - 200px);
 }
 
 /* 区块 */
@@ -433,7 +436,7 @@ body {
 
 /* 状态栏 */
 .status-bar {
-    margin-top: 20px;
+    margin-bottom: 20px;
     padding: 12px 20px;
     background: var(--bg-light);
     border-radius: 6px;
