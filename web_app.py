@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict
 import base64
 from contextlib import redirect_stdout, redirect_stderr
-from collections import defaultdict
+from collections import defaultdict, deque
 import zipfile
 import shutil
 from pathlib import Path
@@ -34,6 +34,11 @@ from activation_key_generator import ActivationKeyGenerator
 
 # 初始化FastAPI应用
 app = FastAPI(title="微信文章下载器")
+
+# 启动后台清理任务
+@app.on_event("startup")
+async def startup_cleanup_task():
+    asyncio.create_task(cleanup_sessions_task())
 
 # 初始化激活码生成器
 key_generator = ActivationKeyGenerator()
@@ -207,32 +212,52 @@ async def rate_limit_middleware(request: Request, call_next):
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-# 全局状态管理
-class AppState:
+# 会话状态管理
+class SessionState:
     def __init__(self):
         self.is_downloading = False
         self.is_paused = False
         self.engine = None
         self.download_task = None
-        self.log_buffer = io.StringIO()
+        self.log_buffer = deque(maxlen=5000)
         self.active_websockets = []
+        self.last_active = datetime.now()
         self.current_activation_key = None  # 当前使用的激活码
         self.current_key_type = None  # 当前激活码类型
         self.last_download_path = None  # 上次下载的路径
         self.last_zip_file = None  # 上次生成的 ZIP 文件路径
-    
-    def add_websocket(self, websocket):
-        self.active_websockets.append(websocket)
-    
-    def remove_websocket(self, websocket):
-        if websocket in self.active_websockets:
-            self.active_websockets.remove(websocket)
-    
-    async def broadcast_log(self, message: str):
-        """广播日志到所有连接的WebSocket"""
+        self.last_input = None  # 上次输入的链接或公众号名称
+
+# 全局状态管理
+class AppState:
+    def __init__(self):
+        self.sessions: Dict[str, SessionState] = {}
+
+    def get_session(self, session_id: str) -> SessionState:
+        session_id = normalize_session_id(session_id)
+        if session_id not in self.sessions:
+            self.sessions[session_id] = SessionState()
+        return self.sessions[session_id]
+
+    def add_websocket(self, session_id: str, websocket):
+        session = self.get_session(session_id)
+        session.active_websockets.append(websocket)
+        session.last_active = datetime.now()
+
+    def remove_websocket(self, session_id: str, websocket):
+        session = self.get_session(session_id)
+        if websocket in session.active_websockets:
+            session.active_websockets.remove(websocket)
+        session.last_active = datetime.now()
+
+    async def broadcast_log(self, session_id: str, message: str):
+        """广播日志到指定会话的WebSocket"""
         # 脱敏处理
         message = sanitize_log(message)
-        for ws in self.active_websockets:
+        session = self.get_session(session_id)
+        session.last_active = datetime.now()
+        session.log_buffer.append(message)
+        for ws in session.active_websockets:
             try:
                 await ws.send_json({"type": "log", "message": message})
             except:
@@ -269,8 +294,72 @@ def sanitize_log(message: str) -> str:
     
     return message
 
+def normalize_session_id(session_id: Optional[str]) -> str:
+    """规范化会话ID，避免路径/注入风险"""
+    import re
+
+    if not session_id:
+        return "default"
+
+    session_id = session_id.strip()
+    session_id = re.sub(r'[^a-zA-Z0-9_-]', '_', session_id)
+    return session_id[:64] or "default"
+
+def build_session_download_path(base_path: str, session_id: str) -> str:
+    """按会话ID生成子目录路径"""
+    safe_session = normalize_session_id(session_id)
+    base = Path(base_path)
+    return str(base / safe_session)
+
+async def fail_task(session_id: str, message: str):
+    """任务失败时自动停止并重置状态"""
+    # 若是警告信息，不中断任务
+    if "[WARN]" in message and "[ERROR]" not in message:
+        await state.broadcast_log(session_id, message)
+        return
+
+    session = state.get_session(session_id)
+    await state.broadcast_log(session_id, message)
+
+    session.is_downloading = False
+    session.is_paused = False
+
+    # 通知前端重置按钮状态
+    for ws in session.active_websockets:
+        try:
+            await ws.send_json({
+                "type": "download_complete",
+                "key_used": False,
+                "zip_file": None
+            })
+        except:
+            pass
+
+async def cleanup_sessions_task():
+    """定期清理不活跃会话的日志缓冲与状态"""
+    while True:
+        await asyncio.sleep(1800)  # 30分钟清理一次
+        try:
+            now = datetime.now()
+            expired = []
+            for session_id, session in state.sessions.items():
+                # 仅清理空闲且非下载中的会话
+                if session.active_websockets:
+                    continue
+                if session.is_downloading:
+                    continue
+                if now - session.last_active > timedelta(hours=6):
+                    expired.append(session_id)
+
+            for session_id in expired:
+                del state.sessions[session_id]
+                print(f"[CLEANUP] 已清理不活跃会话: {session_id}")
+        except Exception as e:
+            print(f"[ERROR] 清理会话失败: {e}")
+
 # Pydantic模型定义
 class DownloadRequest(BaseModel):
+    session_id: str
     url: str
     credentials: str  # 合并的凭证字段
     activation_key: str  # 新增：激活码字段
@@ -282,11 +371,15 @@ class DownloadRequest(BaseModel):
     end_date: Optional[str] = None
     download_path: str
 
+class SessionRequest(BaseModel):
+    session_id: str
+
 # 自定义日志输出类
 class WebLogger:
     """无缓冲的 WebSocket 日志输出"""
-    def __init__(self, state: AppState):
+    def __init__(self, state: AppState, session_id: str):
         self.state = state
+        self.session_id = session_id
         self.loop = None
     
     def write(self, message):
@@ -301,7 +394,7 @@ class WebLogger:
             # 在事件循环中调度协程（立即执行）
             if self.loop and self.loop.is_running():
                 future = asyncio.run_coroutine_threadsafe(
-                    self.state.broadcast_log(message.strip()),
+                    self.state.broadcast_log(self.session_id, message.strip()),
                     self.loop
                 )
                 # 等待一小段时间确保发送
@@ -418,7 +511,8 @@ async def helper(request: Request):
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket连接 - 用于实时日志推送"""
     await websocket.accept()
-    state.add_websocket(websocket)
+    session_id = normalize_session_id(websocket.query_params.get("session_id"))
+    state.add_websocket(session_id, websocket)
     
     try:
         # 发送欢迎消息
@@ -549,7 +643,7 @@ async def websocket_endpoint(websocket: WebSocket):
             # 处理客户端消息（如果需要）
             
     except WebSocketDisconnect:
-        state.remove_websocket(websocket)
+        state.remove_websocket(session_id, websocket)
 
 @app.post("/api/login")
 async def login():
@@ -599,8 +693,10 @@ async def verify_activation_key(request: dict, req: Request):
 async def start_download(request: DownloadRequest, req: Request):
     """开始下载"""
     client_ip = req.client.host
+    session_id = normalize_session_id(request.session_id)
+    session = state.get_session(session_id)
     
-    if state.is_downloading:
+    if session.is_downloading:
         return {"success": False, "message": "已有下载任务在进行中"}
     
     # 输入验证
@@ -642,57 +738,62 @@ async def start_download(request: DownloadRequest, req: Request):
         # 批量下载（包括日期范围下载），需要批量激活码
         if not key_generator.verify_key(activation_key, "batch"):
             rate_limiter.record_failure(client_ip, "/api/download")
-            await state.broadcast_log("[ERROR] 批量下载（包括日期范围下载）需要有效的批量下载激活码 (B- 开头)")
+            await state.broadcast_log(session_id, "[ERROR] 批量下载（包括日期范围下载）需要有效的批量下载激活码 (B- 开头)")
             return {"success": False, "message": "激活码无效或已被使用，批量下载（包括日期范围下载）需要使用 B- 开头的激活码"}
         key_type = "batch"
     else:
         # 单次下载，需要单次激活码
         if not key_generator.verify_key(activation_key, "single"):
             rate_limiter.record_failure(client_ip, "/api/download")
-            await state.broadcast_log("[ERROR] 单次下载需要有效的单次下载激活码 (S- 开头)")
+            await state.broadcast_log(session_id, "[ERROR] 单次下载需要有效的单次下载激活码 (S- 开头)")
             return {"success": False, "message": "激活码无效或已被使用，单次下载需要使用 S- 开头的激活码"}
         key_type = "single"
     
     # 保存当前激活码信息，等下载成功后再标记为已使用
-    state.current_activation_key = activation_key
-    state.current_key_type = key_type
+    session.current_activation_key = activation_key
+    session.current_key_type = key_type
+    session.last_download_path = download_path
+    session.last_input = request.url.strip()
     
     # 脱敏日志（Token 脱敏，激活码不脱敏）
     safe_token = sanitize_sensitive_data(token, 3)
-    await state.broadcast_log(f"[SUCCESS] 激活码验证通过 (类型: {'批量下载' if key_type == 'batch' else '单次下载'}, Key: {activation_key})")
-    await state.broadcast_log(f"[INFO] Token: {safe_token}, IP: {client_ip}")
+    await state.broadcast_log(session_id, f"[SUCCESS] 激活码验证通过 (类型: {'批量下载' if key_type == 'batch' else '单次下载'}, Key: {activation_key})")
+    await state.broadcast_log(session_id, f"[INFO] Token: {safe_token}, IP: {client_ip}")
     
     # 获取当前事件循环并重定向标准输出到WebSocket
-    logger = WebLogger(state)
+    logger = WebLogger(state, session_id)
     logger.loop = asyncio.get_running_loop()
     sys.stdout = logger
     sys.stderr = logger
     
-    state.is_downloading = True
-    state.is_paused = False
+    session.is_downloading = True
+    session.is_paused = False
+    session_download_path = build_session_download_path(download_path, session_id)
+    session.last_download_path = session_download_path
     
     # 创建下载任务
-    state.download_task = asyncio.create_task(
-        run_download_async(request, token, cookies)
+    session.download_task = asyncio.create_task(
+        run_download_async(request, token, cookies, session_id, session_download_path)
     )
     
     return {"success": True, "message": "下载任务已启动"}
 
-async def run_download_async(request: DownloadRequest, token: str, cookies: str):
+async def run_download_async(request: DownloadRequest, token: str, cookies: str, session_id: str, session_download_path: str):
     """异步下载函数"""
+    session = state.get_session(session_id)
     try:
-        await state.broadcast_log(f"\n[TASK] 开始处理链接: {request.url}")
-        await state.broadcast_log(f"[PATH] 保存路径: {request.download_path}")
+        await state.broadcast_log(session_id, f"\n[TASK] 开始处理链接: {request.url}")
+        await state.broadcast_log(session_id, f"[PATH] 保存路径: {session_download_path}")
         
         if request.date_mode:
-            await state.broadcast_log(f"[MODE] 日期范围下载模式: {request.start_date} 至 {request.end_date}")
+            await state.broadcast_log(session_id, f"[MODE] 日期范围下载模式: {request.start_date} 至 {request.end_date}")
         elif request.batch_mode:
-            await state.broadcast_log(f"[MODE] 批量下载模式: 最近 {request.count} 篇")
+            await state.broadcast_log(session_id, f"[MODE] 批量下载模式: 最近 {request.count} 篇")
         elif request.single_mode:
-            await state.broadcast_log(f"[MODE] 单篇下载模式")
+            await state.broadcast_log(session_id, f"[MODE] 单篇下载模式")
         
         # 解析用户提供的cookies字符串
-        await state.broadcast_log("[INFO] 正在解析登录凭证...")
+        await state.broadcast_log(session_id, "[INFO] 正在解析登录凭证...")
         cookies_dict = {}
         try:
             # 解析cookies字符串: "name=value; name2=value2"
@@ -702,19 +803,19 @@ async def run_download_async(request: DownloadRequest, token: str, cookies: str)
                     name, value = pair.strip().split('=', 1)
                     cookies_dict[name.strip()] = value.strip()
             
-            await state.broadcast_log(f"[SUCCESS] 成功解析 {len(cookies_dict)} 个cookies")
+            await state.broadcast_log(session_id, f"[SUCCESS] 成功解析 {len(cookies_dict)} 个cookies")
             # Token 已在前面脱敏输出，这里不再重复
         except Exception as e:
-            await state.broadcast_log(f"[ERROR] Cookies解析失败: {str(e)}")
+            await fail_task(session_id, f"[ERROR] Cookies解析失败: {str(e)}")
             return
         
         if not cookies_dict or not token:
-            await state.broadcast_log("[ERROR] 登录凭证无效")
+            await fail_task(session_id, "[ERROR] 登录凭证无效")
             return
         
         # 初始化引擎
-        state.engine = CrawlerEngine(cookies_dict, token, output_dir=request.download_path)
-        state.engine.pause_check_callback = check_pause_sync
+        session.engine = CrawlerEngine(cookies_dict, token, output_dir=session_download_path)
+        session.engine.pause_check_callback = make_pause_check(session)
         
         articles = []
         
@@ -723,88 +824,100 @@ async def run_download_async(request: DownloadRequest, token: str, cookies: str)
             fakeid = None
             
             if request.url.startswith('http://') or request.url.startswith('https://'):
-                await state.broadcast_log("[INFO] 检测到链接，正在从链接解析公众号信息...")
+                await state.broadcast_log(session_id, "[INFO] 检测到链接，正在从链接解析公众号信息...")
                 # 在线程池中运行
                 loop = asyncio.get_event_loop()
                 fakeid = await loop.run_in_executor(None, state.engine.extract_fakeid_from_url, request.url)
                 
                 if not fakeid:
-                    await state.broadcast_log("[WARN] 无法从链接中提取公众号信息")
-                    return
+                    # Fallback: 尝试从cookies中获取（仅当格式像__biz）
+                    await state.broadcast_log(session_id, "[WARN] 无法从链接中提取公众号信息，尝试从cookies中获取...")
+                    cookie_fakeid = cookies_dict.get('data_bizuin') or cookies_dict.get('bizuin')
+                    if cookie_fakeid:
+                        import re
+                        if re.match(r'^Mz[A-Za-z0-9+/=]{5,}$', cookie_fakeid):
+                            fakeid = cookie_fakeid
+                            await state.broadcast_log(session_id, f"[INFO] 成功从cookies中获取 FakeID: {fakeid}")
+                        else:
+                            await fail_task(session_id, "[ERROR] cookies中的bizuin不是有效的__biz格式，无法用于批量下载")
+                            return
+                    else:
+                        await fail_task(session_id, "[ERROR] cookies中缺少可用的bizuin/data_bizuin字段")
+                        return
             else:
-                await state.broadcast_log(f"[INFO] 检测到公众号名称，正在搜索: {request.url}")
+                await state.broadcast_log(session_id, f"[INFO] 检测到公众号名称，正在搜索: {request.url}")
                 # 在线程池中运行同步方法，避免阻塞事件循环
                 loop = asyncio.get_event_loop()
                 fakeid = await loop.run_in_executor(None, state.engine.search_account, request.url)
             
             if not fakeid:
-                await state.broadcast_log("[ERROR] 无法找到目标公众号")
+                await fail_task(session_id, "[ERROR] 无法找到目标公众号")
                 return
             
-            await state.broadcast_log(f"[INFO] 识别到公众号 FakeID: {fakeid}")
+            await state.broadcast_log(session_id, f"[INFO] 识别到公众号 FakeID: {fakeid}")
             
             if request.date_mode:
-                await state.broadcast_log(f"[INFO] 正在获取 {request.start_date} 至 {request.end_date} 期间的文章...")
+                await state.broadcast_log(session_id, f"[INFO] 正在获取 {request.start_date} 至 {request.end_date} 期间的文章...")
                 # 在线程池中运行
                 loop = asyncio.get_event_loop()
                 articles = await loop.run_in_executor(None, state.engine.get_articles_by_date, fakeid, request.start_date, request.end_date)
             else:
-                await state.broadcast_log(f"[INFO] 正在获取最近 {request.count} 篇文章...")
+                await state.broadcast_log(session_id, f"[INFO] 正在获取最近 {request.count} 篇文章...")
                 # 在线程池中运行
                 loop = asyncio.get_event_loop()
                 articles = await loop.run_in_executor(None, state.engine.get_articles, fakeid, request.count)
             
             if not articles:
-                await state.broadcast_log("[ERROR] 未获取到文章列表")
+                await fail_task(session_id, "[ERROR] 未获取到文章列表")
                 return
             
-            await state.broadcast_log(f"[INFO] 共获取到 {len(articles)} 篇文章")
+            await state.broadcast_log(session_id, f"[INFO] 共获取到 {len(articles)} 篇文章")
         
         else:
             # 单篇下载
-            await state.broadcast_log("[INFO] 正在获取文章元数据...")
+            await state.broadcast_log(session_id, "[INFO] 正在获取文章元数据...")
             # 在线程池中运行
             loop = asyncio.get_event_loop()
             article_info = await loop.run_in_executor(None, state.engine.fetch_article_metadata, request.url)
             
             if not article_info:
-                await state.broadcast_log("[ERROR] 无法解析文章信息，请检查链接是否正确")
+                await fail_task(session_id, "[ERROR] 无法解析文章信息，请检查链接是否正确")
                 return
             
-            await state.broadcast_log(f"[INFO] 识别到文章: {article_info['title']}")
+            await state.broadcast_log(session_id, f"[INFO] 识别到文章: {article_info['title']}")
             articles = [article_info]
         
         # 下载内容 - 在线程池中运行
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, state.engine.download_articles_content, articles)
         
-        await state.broadcast_log(f"[SUCCESS] 任务完成！")
+        await state.broadcast_log(session_id, f"[SUCCESS] 任务完成！")
         if request.batch_mode:
             if request.date_mode:
-                await state.broadcast_log(f"共下载 {len(articles)} 篇文章 ({request.start_date} 至 {request.end_date})")
+                await state.broadcast_log(session_id, f"共下载 {len(articles)} 篇文章 ({request.start_date} 至 {request.end_date})")
             else:
-                await state.broadcast_log(f"共下载 {len(articles)} 篇文章")
+                await state.broadcast_log(session_id, f"共下载 {len(articles)} 篇文章")
         else:
-            await state.broadcast_log(f"文章《{articles[0]['title']}》下载完成！")
+            await state.broadcast_log(session_id, f"文章《{articles[0]['title']}》下载完成！")
         
         # 打包成 ZIP
-        await state.broadcast_log(f"[INFO] 正在打包文件...")
-        zip_filename = create_zip_package(request.download_path)
+        await state.broadcast_log(session_id, f"[INFO] 正在打包文件...")
+        zip_filename = create_zip_package(session_download_path, session_id)
         if zip_filename:
-            state.last_zip_file = zip_filename
-            await state.broadcast_log(f"[SUCCESS] ✅ 文件已打包完成！点击下方按钮下载到本地")
+            session.last_zip_file = zip_filename
+            await state.broadcast_log(session_id, f"[SUCCESS] ✅ 文件已打包完成！点击下方按钮下载到本地")
         else:
-            await state.broadcast_log(f"[WARN] 打包失败，但文件已保存在服务器")
+            await state.broadcast_log(session_id, f"[WARN] 打包失败，但文件已保存在服务器")
         
         # 下载成功完成，标记激活码为已使用
-        if state.current_activation_key:
-            key_generator.mark_as_used(state.current_activation_key)
-            key_type_name = "批量下载" if state.current_key_type == "batch" else "单次下载"
-            await state.broadcast_log(f"[INFO] 激活码 {state.current_activation_key} 已使用 (类型: {key_type_name})")
-            await state.broadcast_log(f"[WARN] ⚠️  该激活码已失效，如需继续下载请使用新的激活码")
+        if session.current_activation_key:
+            key_generator.mark_as_used(session.current_activation_key)
+            key_type_name = "批量下载" if session.current_key_type == "batch" else "单次下载"
+            await state.broadcast_log(session_id, f"[INFO] 激活码 {session.current_activation_key} 已使用 (类型: {key_type_name})")
+            await state.broadcast_log(session_id, f"[WARN] ⚠️  该激活码已失效，如需继续下载请使用新的激活码")
         
         # 广播完成状态，包含下载文件名
-        for ws in state.active_websockets:
+        for ws in session.active_websockets:
             try:
                 await ws.send_json({
                     "type": "download_complete", 
@@ -815,29 +928,31 @@ async def run_download_async(request: DownloadRequest, token: str, cookies: str)
                 pass
     
     except Exception as e:
-        await state.broadcast_log(f"[ERROR] 发生未捕获异常: {e}")
+        await fail_task(session_id, f"[ERROR] 发生未捕获异常: {e}")
         import traceback
         error_trace = traceback.format_exc()
-        await state.broadcast_log(error_trace)
+        await state.broadcast_log(session_id, error_trace)
         
         # 下载失败，不标记激活码为已使用
-        await state.broadcast_log(f"[INFO] 由于下载失败，激活码未被消耗，可以重新尝试")
+        await state.broadcast_log(session_id, f"[INFO] 由于下载失败，激活码未被消耗，可以重新尝试")
     
     finally:
         # 清空当前激活码信息
-        state.current_activation_key = None
-        state.current_key_type = None
-        state.is_downloading = False
-        state.is_paused = False
+        session.current_activation_key = None
+        session.current_key_type = None
+        session.is_downloading = False
+        session.is_paused = False
 
-def check_pause_sync():
-    """同步暂停检查函数"""
-    if state.is_paused:
-        import time
-        while state.is_paused and state.is_downloading:
-            time.sleep(0.5)
+def make_pause_check(session: SessionState):
+    """生成会话级同步暂停检查函数"""
+    def _check():
+        if session.is_paused:
+            import time
+            while session.is_paused and session.is_downloading:
+                time.sleep(0.5)
+    return _check
 
-def create_zip_package(download_path: str) -> Optional[str]:
+def create_zip_package(download_path: str, session_id: str) -> Optional[str]:
     """
     将下载的文件打包成 ZIP
     
@@ -854,7 +969,8 @@ def create_zip_package(download_path: str) -> Optional[str]:
         
         # 生成ZIP文件名（带时间戳）
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        zip_filename = f"wechat_articles_{timestamp}.zip"
+        safe_session = normalize_session_id(session_id)
+        zip_filename = f"wechat_articles_{safe_session}_{timestamp}.zip"
         zip_path = zip_dir / zip_filename
         
         # 检查下载目录是否存在
@@ -905,38 +1021,112 @@ def cleanup_old_zips():
     except Exception as e:
         print(f"[ERROR] 清理ZIP文件失败: {e}")
 
+def clear_downloaded_files(download_path: Optional[str], zip_file: Optional[str]) -> Dict[str, str]:
+    """清理已下载文件与打包zip"""
+    result = {"deleted_path": "", "deleted_zip": ""}
+
+    # 删除下载目录
+    if download_path:
+        try:
+            download_dir = Path(download_path)
+            base_dir = Path.cwd().resolve()
+            resolved = download_dir.resolve()
+
+            # 安全限制：必须在当前项目目录下
+            if base_dir in resolved.parents or resolved == base_dir:
+                if download_dir.exists():
+                    shutil.rmtree(download_dir, ignore_errors=True)
+                    result["deleted_path"] = str(download_dir)
+        except Exception as e:
+            print(f"[ERROR] 删除下载目录失败: {e}")
+
+    # 删除zip
+    if zip_file:
+        try:
+            zip_path = Path(zip_file)
+            if not zip_path.is_absolute():
+                zip_path = Path("temp_zips") / zip_file
+
+            if zip_path.exists():
+                zip_path.unlink()
+                result["deleted_zip"] = zip_path.name
+        except Exception as e:
+            print(f"[ERROR] 删除ZIP失败: {e}")
+
+    return result
+
 @app.post("/api/pause")
-async def pause_download():
+async def pause_download(request: SessionRequest):
     """暂停下载"""
-    if not state.is_downloading:
+    session_id = normalize_session_id(request.session_id)
+    session = state.get_session(session_id)
+
+    if not session.is_downloading:
         return {"success": False, "message": "当前没有下载任务"}
     
-    state.is_paused = True
-    await state.broadcast_log("\n[ACTION] 下载已暂停，点击'恢复'按钮继续\n")
+    session.is_paused = True
+    await state.broadcast_log(session_id, "\n[ACTION] 下载已暂停，点击'恢复'按钮继续\n")
     return {"success": True, "message": "已暂停"}
 
 @app.post("/api/resume")
-async def resume_download():
+async def resume_download(request: SessionRequest):
     """恢复下载"""
-    if not state.is_downloading:
+    session_id = normalize_session_id(request.session_id)
+    session = state.get_session(session_id)
+
+    if not session.is_downloading:
         return {"success": False, "message": "当前没有下载任务"}
     
-    if not state.is_paused:
+    if not session.is_paused:
         return {"success": False, "message": "当前未暂停"}
     
-    await state.broadcast_log("\n[ACTION] 正在恢复下载...")
-    await state.broadcast_log("[INFO] 继续下载中...")
+    await state.broadcast_log(session_id, "\n[ACTION] 正在恢复下载...")
+    await state.broadcast_log(session_id, "[INFO] 继续下载中...")
     
-    state.is_paused = False
-    await state.broadcast_log("[INFO] 已恢复下载\n")
+    session.is_paused = False
+    await state.broadcast_log(session_id, "[INFO] 已恢复下载\n")
     return {"success": True, "message": "已恢复"}
 
+@app.post("/api/clear_downloads")
+async def clear_downloads(request: SessionRequest):
+    """暂停后清理已下载文件并重置状态"""
+    session_id = normalize_session_id(request.session_id)
+    session = state.get_session(session_id)
+
+    if not session.is_downloading:
+        return {"success": False, "message": "当前没有下载任务"}
+
+    if not session.is_paused:
+        return {"success": False, "message": "请先暂停下载"}
+
+    # 尝试终止任务
+    if session.download_task and not session.download_task.done():
+        session.download_task.cancel()
+
+    deleted = clear_downloaded_files(session.last_download_path, session.last_zip_file)
+
+    # 重置状态
+    session.is_downloading = False
+    session.is_paused = False
+    session.engine = None
+    session.download_task = None
+    session.last_download_path = None
+    session.last_zip_file = None
+    session.current_activation_key = None
+    session.current_key_type = None
+    session.last_input = None
+
+    await state.broadcast_log(session_id, "[ACTION] 已清理已下载文件，任务已重置，可重新开始下载")
+    return {"success": True, "message": "已清理并重置", "deleted": deleted}
+
 @app.get("/api/status")
-async def get_status():
+async def get_status(session_id: str = "default"):
     """获取当前状态"""
+    session_id = normalize_session_id(session_id)
+    session = state.get_session(session_id)
     return {
-        "is_downloading": state.is_downloading,
-        "is_paused": state.is_paused
+        "is_downloading": session.is_downloading,
+        "is_paused": session.is_paused
     }
 
 @app.get("/api/download_file/{filename}")

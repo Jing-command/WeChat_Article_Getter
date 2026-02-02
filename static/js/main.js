@@ -2,6 +2,7 @@
 let ws = null;
 let isDownloading = false;
 let isPaused = false;
+let sessionId = null;
 
 // DOM元素
 const urlInput = document.getElementById('urlInput');
@@ -10,6 +11,7 @@ const keyStatus = document.getElementById('keyStatus');
 const credentialsInput = document.getElementById('credentialsInput');
 const startBtn = document.getElementById('startBtn');
 const pauseBtn = document.getElementById('pauseBtn');
+const clearBtn = document.getElementById('clearBtn');
 const singleMode = document.getElementById('singleMode');
 const batchMode = document.getElementById('batchMode');
 const dateMode = document.getElementById('dateMode');
@@ -23,15 +25,26 @@ const statusText = document.getElementById('statusText');
 
 // 初始化
 function init() {
+    sessionId = getSessionId();
     connectWebSocket();
     setupEventListeners();
     updateCountHint();
 }
 
+// 获取或生成会话ID
+function getSessionId() {
+    let sid = localStorage.getItem('wechat_downloader_session');
+    if (!sid) {
+        sid = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+        localStorage.setItem('wechat_downloader_session', sid);
+    }
+    return sid;
+}
+
 // 连接WebSocket
 function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+    ws = new WebSocket(`${protocol}//${window.location.host}/ws?session_id=${encodeURIComponent(sessionId)}`);
     
     ws.onopen = () => {
         console.log('WebSocket连接已建立');
@@ -64,6 +77,9 @@ function setupEventListeners() {
     
     // 暂停按钮
     pauseBtn.addEventListener('click', handlePauseResume);
+
+    // 清理按钮
+    clearBtn.addEventListener('click', handleClearDownloads);
     
     // 下载模式复选框
     singleMode.addEventListener('change', handleSingleModeChange);
@@ -246,6 +262,7 @@ async function handleStartDownload() {
     }
     
     const requestData = {
+        session_id: sessionId,
         url: url,
         activation_key: activationKey,
         credentials: credentials,
@@ -260,6 +277,7 @@ async function handleStartDownload() {
     
     startBtn.disabled = true;
     pauseBtn.disabled = false;
+    clearBtn.disabled = true;
     isDownloading = true;
     updateStatus('● 下载中...');
     
@@ -300,7 +318,11 @@ async function handlePauseResume() {
         
         try {
             const response = await fetch('/api/resume', {
-                method: 'POST'
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ session_id: sessionId })
             });
             
             const result = await response.json();
@@ -308,6 +330,7 @@ async function handlePauseResume() {
             if (result.success) {
                 isPaused = false;
                 pauseBtn.textContent = '⏸ 暂停';
+                clearBtn.disabled = true;
                 updateStatus('● 下载中...');
             } else {
                 alert('恢复失败: ' + result.message);
@@ -321,7 +344,11 @@ async function handlePauseResume() {
         // 暂停
         try {
             const response = await fetch('/api/pause', {
-                method: 'POST'
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ session_id: sessionId })
             });
             
             const result = await response.json();
@@ -329,6 +356,7 @@ async function handlePauseResume() {
             if (result.success) {
                 isPaused = true;
                 pauseBtn.textContent = '▶ 恢复';
+                clearBtn.disabled = false;
                 updateStatus('⏸ 已暂停');
             } else {
                 alert('暂停失败: ' + result.message);
@@ -339,12 +367,48 @@ async function handlePauseResume() {
     }
 }
 
+// 清理已下载并重置
+async function handleClearDownloads() {
+    if (!isPaused) {
+        alert('请先暂停下载');
+        return;
+    }
+
+    const confirmDelete = confirm('确定要删除已下载的文件并重置任务吗？\n\n此操作不可恢复。');
+    if (!confirmDelete) return;
+
+    clearBtn.disabled = true;
+
+    try {
+        const response = await fetch('/api/clear_downloads', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ session_id: sessionId })
+        });
+        const result = await response.json();
+
+        if (result.success) {
+            appendLog('[SUCCESS] 已清理已下载文件，任务已重置');
+            handleDownloadComplete(false, null);
+        } else {
+            alert('清理失败: ' + result.message);
+            clearBtn.disabled = false;
+        }
+    } catch (error) {
+        alert('清理请求失败: ' + error.message);
+        clearBtn.disabled = false;
+    }
+}
+
 // 下载完成
 function handleDownloadComplete(keyUsed, zipFile) {
     isDownloading = false;
     isPaused = false;
     startBtn.disabled = false;
     pauseBtn.disabled = true;
+    clearBtn.disabled = true;
     pauseBtn.textContent = '⏸ 暂停';
     updateStatus('● 就绪');
     

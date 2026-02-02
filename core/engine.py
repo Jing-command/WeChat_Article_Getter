@@ -354,12 +354,11 @@ class CrawlerEngine:
             # 方法1: 从URL参数中提取__biz
             # 微信文章URL格式: https://mp.weixin.qq.com/s?__biz=MzA...&mid=...
             biz_match = re.search(r'__biz=([^&]+)', url)
-            if not biz_match:
-                print("[WARN] 无法从URL中提取__biz参数")
-                return None
-            
-            biz = biz_match.group(1)
-            print(f"[INFO] 提取到__biz: {biz[:20]}...")
+            biz = biz_match.group(1) if biz_match else None
+            if biz:
+                print(f"[INFO] 提取到__biz: {biz[:20]}...")
+            else:
+                print("[WARN] 无法从URL中提取__biz参数，尝试从页面内容解析...")
             
             # 方法2: 通过搜索接口查找该公众号
             # 先获取文章标题，然后通过文章内容找到公众号名称
@@ -370,7 +369,25 @@ class CrawlerEngine:
                 return None
             
             resp.encoding = 'utf-8'
-            soup = BeautifulSoup(resp.text, 'html.parser')
+            html_text = resp.text
+            soup = BeautifulSoup(html_text, 'html.parser')
+
+            # 方法2: 从页面脚本中提取 biz
+            if not biz:
+                biz_patterns = [
+                    r'var\s+biz\s*=\s*"([^"]+)"',
+                    r'"biz"\s*:\s*"([^"]+)"',
+                    r'__biz=([^&"\\]+)'
+                ]
+                for pattern in biz_patterns:
+                    m = re.search(pattern, html_text)
+                    if m:
+                        biz = m.group(1)
+                        break
+
+                if biz:
+                    print(f"[INFO] 从页面内容提取到__biz: {biz[:20]}...")
+                    return biz
             
             # 提取公众号名称
             account_name = None

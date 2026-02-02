@@ -15,412 +15,188 @@
             font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
+            padding: 32px 16px;
         }
 
         .container {
-            background: white;
+            background: #ffffff;
             border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            max-width: 800px;
-            width: 100%;
-            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 36px;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 24px;
         }
 
         h1 {
-            color: #333;
-            margin-bottom: 10px;
-            font-size: 28px;
+            color: #1f2937;
+            font-size: 30px;
         }
 
         .subtitle {
-            color: #666;
-            margin-bottom: 30px;
+            color: #6b7280;
+            margin-top: 6px;
             font-size: 14px;
         }
 
-        .step {
-            background: #f8f9fa;
-            border-left: 4px solid #667eea;
-            padding: 20px;
-            margin-bottom: 20px;
-            border-radius: 8px;
+        .badge {
+            background: #eef2ff;
+            color: #4338ca;
+            border-radius: 999px;
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 600;
         }
 
-        .step-title {
-            font-weight: bold;
-            color: #667eea;
-            margin-bottom: 10px;
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 18px;
+            margin-bottom: 22px;
+        }
+
+        .card {
+            border-radius: 14px;
+            padding: 20px;
+            border: 1px solid #e5e7eb;
+            background: #f9fafb;
+        }
+
+        .card.primary {
+            background: #eef6ff;
+            border-color: #cfe3ff;
+        }
+
+        .card.secondary {
+            background: #eef9f6;
+            border-color: #cfeee4;
+        }
+
+        .card-title {
+            font-weight: 700;
             font-size: 18px;
+            margin-bottom: 8px;
+            color: #1f2937;
         }
 
-        .step-content {
-            color: #555;
+        .card-desc {
+            color: #4b5563;
+            margin-bottom: 12px;
+            font-size: 14px;
+        }
+
+        .steps {
+            margin-left: 18px;
+            color: #374151;
             line-height: 1.8;
+            font-size: 14px;
         }
 
-        .bookmarklet-container {
-            background: #fff3cd;
-            border: 2px dashed #ffc107;
-            border-radius: 10px;
-            padding: 20px;
-            margin: 20px 0;
-            text-align: center;
+        .steps li {
+            margin-bottom: 8px;
         }
 
-        .bookmarklet-btn {
+        .download-link {
             display: inline-block;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 15px 40px;
-            border-radius: 50px;
-            text-decoration: none;
-            font-weight: bold;
-            font-size: 16px;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-            transition: transform 0.2s;
-            cursor: move;
-        }
-
-        .bookmarklet-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
-        }
-
-        .hint {
-            color: #856404;
             margin-top: 10px;
+            padding: 10px 14px;
+            border-radius: 8px;
+            background: #3b82f6;
+            color: #ffffff;
+            text-decoration: none;
+            font-weight: 600;
             font-size: 13px;
+        }
+
+        .note {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #6b7280;
         }
 
         .code-block {
-            background: #2d2d2d;
-            color: #f8f8f2;
-            padding: 15px;
+            background: #ffffff;
+            border: 1px dashed #d1d5db;
             border-radius: 8px;
-            font-family: 'Consolas', monospace;
-            font-size: 13px;
-            overflow-x: auto;
-            margin: 10px 0;
+            padding: 12px;
+            font-family: Consolas, monospace;
+            font-size: 12px;
+            color: #111827;
+            margin-top: 8px;
         }
 
         .warning {
-            background: #fff3cd;
-            border-left: 4px solid #ffc107;
-            padding: 15px;
-            margin: 20px 0;
+            background: #fff7ed;
+            border-left: 4px solid #f59e0b;
             border-radius: 8px;
+            padding: 14px 16px;
         }
 
         .warning-title {
-            font-weight: bold;
-            color: #856404;
-            margin-bottom: 5px;
+            font-weight: 700;
+            color: #92400e;
+            margin-bottom: 6px;
         }
 
-        ol {
-            margin-left: 20px;
-        }
-
-        ol li {
-            margin-bottom: 10px;
-        }
-
-        strong {
-            color: #667eea;
-        }
-
-        .demo-video {
-            width: 100%;
-            border-radius: 10px;
-            margin: 15px 0;
-            border: 2px solid #e0e0e0;
-        }
-
-        .copy-btn {
-            background: #28a745;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-            margin-top: 10px;
-        }
-
-        .copy-btn:hover {
-            background: #218838;
+        a {
+            color: #2563eb;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🔐 微信公众平台凭证获取工具</h1>
-        <p class="subtitle">使用浏览器扩展快速获取完整Cookie（包括HttpOnly字段）</p>
+        <div class="header">
+            <div>
+                <h1>🔐 微信公众平台凭证获取工具</h1>
+                <p class="subtitle">仅保留两种方式：自研扩展、F12 手动获取</p>
+            </div>
+            <span class="badge">推荐方式优先</span>
+        </div>
 
-        <div class="step" style="background: #d4edda; border-left: 4px solid #28a745;">
-            <div class="step-title" style="color: #155724;">🎯 推荐方法：使用EditThisCookie扩展 ⭐⭐⭐⭐⭐</div>
-            <div class="step-content">
-                <div style="background: #d1ecf1; border: 2px solid #17a2b8; border-radius: 8px; padding: 15px; margin-bottom: 15px;">
-                    <p style="color: #0c5460; font-weight: bold; margin: 0;">✅ 此方法可以获取完整Cookie（包括HttpOnly字段）！</p>
-                    <p style="color: #0c5460; margin: 10px 0 0 0;">EditThisCookie扩展拥有更高的浏览器权限，可以访问所有Cookie。</p>
-                </div>
+        <div class="cards">
+            <div class="card primary">
+                <div class="card-title">🚀 方法一：自研扩展（推荐）</div>
+                <div class="card-desc">一键获取 Token + Cookies（包含 HttpOnly）。</div>
+                <ol class="steps">
+                    <li>下载扩展并解压</li>
+                    <li>Chrome/Edge 打开扩展页面，启用“开发者模式”</li>
+                    <li>点击“加载已解压的扩展”，选择解压后的文件夹</li>
+                    <li>打开 mp.weixin.qq.com，点击扩展按钮即可复制 Token + Cookies</li>
+                </ol>
+                <a class="download-link" href="/static/extension/wechat-cookie-exporter.zip">📦 下载扩展 ZIP</a>
+                <div class="note">提示：Token 来自地址栏 URL 中的 token= 参数。</div>
+            </div>
 
-                <p><strong>步骤1：安装EditThisCookie扩展</strong></p>
-                
-                <div style="background: white; padding: 15px; border-radius: 8px; margin: 15px 0;">
-                    <p style="color: #333; margin-bottom: 10px;"><strong>Chrome浏览器：</strong></p>
-                    <ol style="margin-left: 20px; color: #555; line-height: 1.8;">
-                        <li>打开Chrome浏览器</li>
-                        <li>访问 <a href="https://chrome.google.com/webstore/category/extensions" target="_blank" style="color: #667eea;">Chrome网上应用店</a></li>
-                        <li>搜索 <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">EditThisCookie</code></li>
-                        <li>点击"添加至Chrome"安装</li>
-                        <li>安装完成后，工具栏会出现🍪图标</li>
+            <div class="card secondary">
+                <div class="card-title">🛠️ 方法二：F12 手动获取</div>
+                <div class="card-desc">手动获取完整 Cookie 与 Token。</div>
+                <div class="card-section">
+                    <div class="card-desc"><strong>步骤1：获取 Token</strong></div>
+                    <ol class="steps">
+                        <li>登录微信公众平台后，点击任意菜单（如“图文消息”）</li>
+                        <li>按 F12 打开开发者工具</li>
+                        <li>切换到 Network（网络）标签</li>
+                        <li>刷新页面或点击菜单，查看 URL 中的 token 参数</li>
                     </ol>
-
-                    <p style="color: #333; margin: 15px 0 10px 0;"><strong>Edge浏览器：</strong></p>
-                    <ol style="margin-left: 20px; color: #555; line-height: 1.8;">
-                        <li>打开Edge浏览器</li>
-                        <li>访问 <a href="https://microsoftedge.microsoft.com/addons/Microsoft-Edge-Extensions-Home" target="_blank" style="color: #667eea;">Edge加载项商店</a></li>
-                        <li>搜索 <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">EditThisCookie</code></li>
-                        <li>点击"获取"安装</li>
-                        <li>或者直接安装Chrome版本（Edge支持Chrome扩展）</li>
+                </div>
+                <div class="card-section" style="margin-top: 10px;">
+                    <div class="card-desc"><strong>步骤2：获取完整 Cookie</strong></div>
+                    <ol class="steps">
+                        <li>切换到 Application（应用程序）标签（如未显示，点 >> 展开）</li>
+                        <li>Storage → Cookies → https://mp.weixin.qq.com</li>
+                        <li>Ctrl+A 全选 Cookie，右键 Copy</li>
                     </ol>
-
-                    <p style="color: #666; margin-top: 15px; font-size: 13px;">
-                        💡 <strong>找不到扩展？</strong>也可以搜索其他Cookie管理扩展，如：<br>
-                        - Cookie-Editor<br>
-                        - Cookie Manager<br>
-                        - 任何支持导出Cookie的扩展都可以
-                    </p>
                 </div>
-
-                <p><strong>步骤2：使用扩展导出Cookie</strong></p>
-                <ol style="margin: 10px 0 20px 20px;">
-                    <li>打开并登录 <a href="https://mp.weixin.qq.com" target="_blank" style="color: #667eea;">微信公众平台</a></li>
-                    <li>点击浏览器工具栏的 <strong>🍪 图标</strong></li>
-                    <li>在弹出的窗口中，点击底部的 <strong>📋 Export（导出）</strong> 按钮</li>
-                    <li>选择导出格式（推荐选择默认格式）</li>
-                    <li>Cookie会自动复制到剪贴板</li>
-                </ol>
-
-                <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 8px;">
-                    <p style="color: #856404; font-weight: bold; margin: 0 0 10px 0;">📝 导出的Cookie格式示例：</p>
-                    <div style="background: #2d2d2d; color: #f8f8f2; padding: 10px; border-radius: 5px; font-family: Consolas, monospace; font-size: 12px; overflow-x: auto;">
-[<br>
-&nbsp;&nbsp;{"domain":"mp.weixin.qq.com","name":"data_bizuin","value":"xxx",...},<br>
-&nbsp;&nbsp;{"domain":"mp.weixin.qq.com","name":"bizuin","value":"xxx",...},<br>
-&nbsp;&nbsp;...<br>
-]
-                    </div>
-                    <p style="color: #856404; margin: 10px 0 0 0;">这是JSON格式，包含所有Cookie字段（包括HttpOnly）</p>
-                </div>
-
-                <p><strong>步骤3：直接使用JSON Cookie</strong></p>
-                <div style="background: #d1ecf1; border: 2px solid #17a2b8; border-radius: 8px; padding: 15px; margin: 15px 0;">
-                    <p style="color: #0c5460; font-weight: bold; margin: 0 0 10px 0;">✨ 无需转换！直接粘贴即可</p>
-                    <p style="color: #0c5460; margin: 0;">EditThisCookie导出的JSON格式可以直接使用，程序会自动识别并转换。</p>
-                </div>
-                <ol style="margin: 10px 0 20px 20px; color: #555; line-height: 1.8;">
-                    <li>打开EditThisCookie，点击"Export"（导出）按钮</li>
-                    <li>复制导出的JSON内容（整个 <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">[...]</code> 数组）</li>
-                    <li>直接粘贴到下载页面的"登录凭证"输入框</li>
-                    <li>程序会自动识别JSON格式并提取所需Cookie ✅</li>
-                </ol>
-
-                <details style="margin: 15px 0;">
-                    <summary style="cursor: pointer; color: #667eea; font-weight: bold;">📌 可选：手动转换格式（高级用户）</summary>
-                    <div style="background: white; border: 2px solid #667eea; border-radius: 8px; padding: 15px; margin: 15px 0;">
-                        <p style="color: #555; margin: 0 0 10px 0;">如果你需要手动转换，可以使用以下Python脚本：</p>
-                        <div style="background: #2d2d2d; color: #f8f8f2; padding: 10px; margin: 10px 0; border-radius: 5px; font-family: Consolas, monospace; font-size: 12px; overflow-x: auto;">
-import json<br>
-<br>
-# 读取JSON<br>
-with open('cookies.json', 'r') as f:<br>
-&nbsp;&nbsp;&nbsp;&nbsp;cookies = json.load(f)<br>
-<br>
-# 转换为标准格式<br>
-cookie_str = '; '.join([f"{c['name']}={c['value']}" for c in cookies])<br>
-print(cookie_str)
-                        </div>
-                        <button class="copy-btn" onclick="copyConvertScript()">复制转换脚本</button>
-                    </div>
-                </details>
-
-                <p><strong>步骤4：获取Token</strong></p>
-                <ol style="margin: 10px 0 20px 20px;">
-                    <li>在微信公众平台，点击任意菜单（如"图文消息"）</li>
-                    <li>查看浏览器地址栏URL</li>
-                    <li>找到 <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">token=</code> 参数</li>
-                    <li>复制等号后面的10位数字</li>
-                </ol>
-
-                <p><strong>步骤5：提交使用</strong></p>
-                <div style="background: #d4edda; border: 2px solid #28a745; border-radius: 8px; padding: 15px; margin: 15px 0;">
-                    <p style="color: #155724; font-weight: bold; margin: 0 0 10px 0;">✅ 三种支持的格式：</p>
-                    
-                    <p style="color: #155724; font-weight: bold; margin: 15px 0 5px 0;">格式1：直接粘贴JSON（最简单 ⭐推荐）</p>
-                    <div style="background: #fff; padding: 10px; margin: 10px 0; border-radius: 5px; font-family: Consolas, monospace; font-size: 11px; color: #333; max-height: 150px; overflow-y: auto;">
-[<br>
-&nbsp;&nbsp;{"name": "bizuin", "value": "3691095221", ...},<br>
-&nbsp;&nbsp;{"name": "data_bizuin", "value": "3691095221", ...},<br>
-&nbsp;&nbsp;...<br>
-]
-                    </div>
-                    <p style="color: #0c5460; font-size: 12px; margin: 5px 0 0 0;">💡 从EditThisCookie导出后直接粘贴即可，程序自动识别</p>
-                    
-                    <p style="color: #155724; font-weight: bold; margin: 20px 0 5px 0;">格式2：Token + Cookies（标准格式）</p>
-                    <div style="background: #fff; padding: 10px; margin: 10px 0; border-radius: 5px; font-family: Consolas, monospace; font-size: 11px; color: #333;">
-Token: 1234567890<br>
-<br>
-Cookies: data_bizuin=xxx; bizuin=xxx; data_ticket=xxx; ...
-                    </div>
-                    
-                    <p style="color: #155724; font-weight: bold; margin: 20px 0 5px 0;">格式3：纯Cookie字符串</p>
-                    <div style="background: #fff; padding: 10px; margin: 10px 0; border-radius: 5px; font-family: Consolas, monospace; font-size: 11px; color: #333;">
-data_bizuin=xxx; bizuin=xxx; data_ticket=xxx; slave_sid=xxx; ...
-                    </div>
-                    
-                    <p style="color: #155724; margin: 15px 0 0 0;">将任意格式粘贴到下载页面的"登录凭证"输入框即可 ✨</p>
-                </div>
-            </div>
-        </div>
-
-        <div class="step" style="opacity: 0.6;">
-            <div class="step-title">📌 备用方法：书签工具（已废弃，不推荐）</div>
-            <div class="step-content">
-                <div style="background: #f8d7da; border: 2px solid #dc3545; border-radius: 8px; padding: 15px; margin-bottom: 15px;">
-                    <p style="color: #721c24; font-weight: bold; margin: 0;">❌ 此方法已废弃！</p>
-                    <p style="color: #721c24; margin: 10px 0 0 0;">由于浏览器安全限制，JavaScript无法读取HttpOnly Cookie，导致获取的Cookie不完整（缺少5个关键字段）。</p>
-                    <p style="color: #dc3545; font-weight: bold; margin: 10px 0 0 0;">请使用上方的EditThisCookie扩展方法！</p>
-                </div>
-                <p><strong>Chrome/Edge 浏览器添加方法：</strong></p>
-                <div class="bookmarklet-container">
-                    <a href="javascript:(function(){try{let t='';const c=document.cookie.split(';');for(let i=0;i<c.length;i++){const p=c[i].trim().split('=');if(p[0]==='token'){t=p[1];break}}if(!t){const u=new URL(window.location.href);t=u.searchParams.get('token')||''}const cookies=document.cookie;if(!t||!cookies){alert('❌ 未找到Token或Cookies\n\n请确保：\n1. 已登录微信公众平台\n2. 在 mp.weixin.qq.com 域名下');return}const result=`Token: ${t}\n\nCookies:\n${cookies}`;const ta=document.createElement('textarea');ta.value=result;ta.style.position='fixed';ta.style.top='-9999px';document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);const div=document.createElement('div');div.innerHTML=`<div style='position:fixed;top:20px;right:20px;background:#4CAF50;color:white;padding:20px 30px;border-radius:10px;box-shadow:0 4px 15px rgba(0,0,0,0.3);z-index:999999;font-family:Microsoft YaHei;'><h3 style='margin:0 0 10px 0;font-size:18px;'>✅ 复制成功！</h3><p style='margin:0;font-size:14px;line-height:1.6;'>Token: ${t}<br>已复制到剪贴板<br><br>现在可以粘贴到网站了</p></div>`;document.body.appendChild(div);setTimeout(()=>div.remove(),5000)}catch(e){alert('发生错误：'+e.message)}})();" 
-                       class="bookmarklet-btn" 
-                       id="bookmarkBtn">
-                        📋 一键复制微信凭证
-                    </a>
-                    <p class="hint" style="color: #d9534f; font-weight: bold; margin-top: 15px;">
-                        ⚠️ Chrome 不支持右键添加书签！请使用以下方法：
-                    </p>
-                    <div style="background: white; padding: 15px; border-radius: 8px; margin-top: 10px; text-align: left;">
-                        <p style="color: #333; margin-bottom: 10px;"><strong>方法1：显示书签栏后拖拽（推荐）</strong></p>
-                        <ol style="margin-left: 20px; color: #555; line-height: 1.8;">
-                            <li>按 <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">Ctrl+Shift+B</code> 显示书签栏</li>
-                            <li><strong>按住鼠标左键</strong>拖动上面的按钮到书签栏</li>
-                            <li>松开鼠标，书签添加完成</li>
-                        </ol>
-                        <p style="color: #333; margin: 15px 0 10px 0;"><strong>方法2：手动创建书签</strong></p>
-                        <ol style="margin-left: 20px; color: #555; line-height: 1.8;">
-                            <li>右键点击书签栏空白处 → <strong>添加网页</strong></li>
-                            <li>名称填：<code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">一键复制微信凭证</code></li>
-                            <li>点击下面的 <button onclick="copyBookmarkletCode()" style="background: #667eea; color: white; border: none; padding: 5px 15px; border-radius: 5px; cursor: pointer;">复制书签代码</button> 并粘贴到网址</li>
-                            <li>点击保存</li>
-                        </ol>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="step" style="opacity: 0.6;">
-            <div class="step-title">🌐 步骤2：登录微信公众平台（已废弃）</div>
-            <div class="step-content">
-                <ol>
-                    <li>打开 <a href="https://mp.weixin.qq.com" target="_blank" style="color:#667eea;" id="mpLink">微信公众平台</a></li>
-                    <li>使用微信扫码登录</li>
-                    <li>登录成功后，点击刚才添加的书签</li>
-                </ol>
-            </div>
-        </div>
-
-        <div class="step" style="opacity: 0.6;">
-            <div class="step-title">✨ 步骤3：使用书签提取凭证（已废弃）</div>
-            <div class="step-content">
-                <p>在微信公众平台页面，点击书签栏中的 <strong>📋 一键复制微信凭证</strong></p>
-                <p>✅ 会自动提取并复制Token和Cookies到剪贴板</p>
-                <p>✅ 页面右上角会显示成功提示</p>
-            </div>
-        </div>
-
-        <div class="step" style="opacity: 0.6;">
-            <div class="step-title">📝 步骤4：粘贴到网站（已废弃）</div>
-            <div class="step-content">
-                <p>返回下载器网站，粘贴到对应的输入框：</p>
-                <ul style="margin-left: 20px; margin-top: 10px;">
-                    <li><strong>Token输入框</strong>：从复制的内容中找到"Token: "后面的数字</li>
-                    <li><strong>Cookies输入框</strong>：从"Cookies:"后面复制整段内容</li>
-                </ul>
-            </div>
-        </div>
-
-        <div class="warning" style="background: #f8d7da; border-left: 4px solid #dc3545;">
-            <div class="warning-title" style="color: #721c24;">⚠️ 重要提示：书签工具的限制</div>
-            <div style="margin-top: 10px; color: #721c24; line-height: 1.8;">
-                <p style="font-weight: bold; margin-bottom: 10px;">❌ 书签工具无法获取完整Cookie！</p>
-                <p>由于微信公众平台的关键Cookie字段（data_bizuin、bizuin、data_ticket等）被设置为<strong>HttpOnly</strong>，JavaScript无法读取。</p>
-                <p style="margin-top: 10px;"><strong>推荐使用下方的【手动复制方法】获取完整Cookie！</strong></p>
-            </div>
-        </div>
-
-        <div class="step" style="background: #d1ecf1; border-left: 4px solid #0c5460;">
-            <div class="step-title" style="color: #0c5460;">🛠️ 手动复制方法（推荐）⭐</div>
-            <div class="step-content">
-                <p style="font-weight: bold; color: #0c5460; margin-bottom: 15px;">此方法可以获取完整的Cookie，包括所有关键字段！</p>
-                
-                <p><strong>步骤1：获取Token</strong></p>
-                <ol style="margin: 10px 0 20px 20px;">
-                    <li>登录微信公众平台后，随便点击一个菜单（如"图文消息"）</li>
-                    <li>按 <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">F12</code> 打开开发者工具</li>
-                    <li>切换到 <strong>Network（网络）</strong> 标签</li>
-                    <li>刷新页面或点击菜单，找到任意一个请求</li>
-                    <li>查看URL中的 <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">token=</code> 参数，复制后面的10位数字</li>
-                </ol>
-
-                <p><strong>步骤2：获取完整Cookie</strong></p>
-                <ol style="margin: 10px 0 20px 20px;">
-                    <li>在开发者工具中切换到 <strong>Application（应用程序）</strong> 标签
-                        <br><span style="color: #666; font-size: 12px;">（如果找不到，点击 '>>' 展开更多标签）</span>
-                    </li>
-                    <li>左侧选择 <strong>Storage（存储）</strong> → <strong>Cookies</strong> → <code>https://mp.weixin.qq.com</code></li>
-                    <li>在右侧Cookie列表中，<strong>按Ctrl+A全选所有Cookie</strong></li>
-                    <li>右键点击 → 选择 <strong>Copy（复制）</strong>，会自动复制为 <code>name=value; name2=value2</code> 格式</li>
-                    <li>或者手动复制所有Cookie（确保包含以下关键字段）：
-                        <div style="background: #fff; padding: 10px; margin: 10px 0; border-radius: 5px; font-size: 12px;">
-                            <strong style="color: #dc3545;">必需字段：</strong>
-                            <ul style="margin: 5px 0 0 20px; color: #666;">
-                                <li>data_bizuin</li>
-                                <li>bizuin</li>
-                                <li>data_ticket</li>
-                                <li>slave_sid</li>
-                                <li>slave_user</li>
-                            </ul>
-                        </div>
-                    </li>
-                </ol>
-
-                <p><strong>步骤3：验证Cookie完整性</strong></p>
-                <ol style="margin: 10px 0 20px 20px;">
-                    <li>复制Cookie后，在项目目录运行：
-                        <div class="code-block" style="margin: 10px 0;">python check_cookies.py</div>
-                    </li>
-                    <li>粘贴刚复制的Cookie</li>
-                    <li>检查是否显示 <strong style="color: #28a745;">✅ Cookie完整性检查通过</strong></li>
-                    <li>如果提示缺少字段，返回第2步重新复制</li>
-                </ol>
-
-                <div style="background: #d4edda; border: 2px solid #28a745; border-radius: 8px; padding: 15px; margin-top: 15px;">
-                    <p style="color: #155724; font-weight: bold; margin: 0;">✅ 推荐格式：</p>
-                    <p style="color: #155724; margin: 10px 0 0 0; font-size: 13px;">
-                        将Token和Cookies合并到一起粘贴到"登录凭证"输入框：
-                    </p>
-                    <div style="background: #fff; padding: 10px; margin: 10px 0 0 0; border-radius: 5px; font-family: Consolas, monospace; font-size: 12px; color: #333;">
-                        Token: 1234567890<br>
-                        Cookies: data_bizuin=xxx; bizuin=xxx; data_ticket=xxx; slave_sid=xxx; ...
-                    </div>
+                <div class="code-block">
+                    Token: 1234567890<br>
+                    Cookies: data_bizuin=xxx; bizuin=xxx; data_ticket=xxx; slave_sid=xxx; ...
                 </div>
             </div>
         </div>
@@ -437,61 +213,5 @@ data_bizuin=xxx; bizuin=xxx; data_ticket=xxx; slave_sid=xxx; ...
         </div>
     </div>
 
-    <script>
-        // 复制书签代码
-        function copyBookmarkletCode() {
-            const code = document.getElementById('bookmarkBtn').href;
-            const textarea = document.createElement('textarea');
-            textarea.value = code;
-            textarea.style.position = 'fixed';
-            textarea.style.top = '-9999px';
-            document.body.appendChild(textarea);
-            textarea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textarea);
-            alert('✅ 书签代码已复制！\n\n下一步：\n1. 右键书签栏空白处\n2. 选择"添加网页"\n3. 名称填：一键复制微信凭证\n4. 网址粘贴刚复制的代码\n5. 保存');
-        }
-
-        function copyManualCode() {
-            const code = document.getElementById('manualCode').textContent;
-            const textarea = document.createElement('textarea');
-            textarea.value = code;
-            textarea.style.position = 'fixed';
-            textarea.style.top = '-9999px';
-            document.body.appendChild(textarea);
-            textarea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textarea);
-            alert('✅ 代码已复制到剪贴板！\n\n现在：\n1. 在微信公众平台按F12\n2. 切换到Console\n3. 粘贴并回车');
-        }
-
-        function showBookmarkInstructions() {
-            alert('📌 如何添加书签：\n\n' +
-                  '方式1（推荐）：\n' +
-                  '右键点击按钮 → 添加到书签/收藏夹\n\n' +
-                  '方式2：\n' +
-                  '按住鼠标左键拖拽到书签栏\n\n' +
-                  '💡 提示：添加后，在微信公众平台点击这个书签即可一键提取凭证！');
-        }
-
-        function copyConvertScript() {
-            const script = `import json
-
-# 读取JSON
-with open('cookies.json', 'r') as f:
-    cookies = json.load(f)
-
-# 转换为标准格式
-cookie_str = '; '.join([f"{c['name']}={c['value']}" for c in cookies])
-print(cookie_str)`;
-            
-            const textarea = document.createElement('textarea');
-            textarea.value = script;
-            textarea.style.position = 'fixed';
-            textarea.style.top = '-9999px';
-            document.body.appendChild(textarea);
-            textarea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textarea);
-            alert('✅ 转换脚本已复制！\n\n使用方法：\n1. 保存为 convert.py\n2. 将EditThisCookie导出的JSON保存为 cookies.json\n3. 运行: python convert.py\n4. 复制输出的Cookie字符串');
-        }
+</body>
+</html>

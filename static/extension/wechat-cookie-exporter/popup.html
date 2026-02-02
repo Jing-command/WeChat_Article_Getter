@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WeChat Token & Cookie Exporter</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+      width: 350px;
+      padding: 0;
+      background: #f8f9fa;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .header-icon {
+      font-size: 28px;
+    }
+
+    .header-title {
+      font-size: 16px;
+      font-weight: bold;
+    }
+
+    .container {
+      padding: 16px;
+    }
+
+    button {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 14px;
+      transition: transform 0.2s;
+    }
+
+    button:hover {
+      transform: scale(1.02);
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    textarea {
+      width: 100%;
+      height: 180px;
+      margin-top: 12px;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      resize: vertical;
+      background: white;
+    }
+
+    .hint {
+      font-size: 12px;
+      color: #666;
+      margin-top: 12px;
+      line-height: 1.5;
+    }
+
+    .success {
+      color: #28a745;
+    }
+
+    .error {
+      color: #dc3545;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-icon">🔐</div>
+    <div class="header-title">微信凭证导出</div>
+  </div>
+  
+  <div class="container">
+    <button id="getBtn">获取并复制</button>
+    <textarea id="output" placeholder="结果会显示在这里..."></textarea>
+    <div class="hint">
+      ℹ️ 请先打开 <a href="https://mp.weixin.qq.com" target="_blank" style="color: #667eea;">mp.weixin.qq.com</a> 并点击后台任意菜单（如图文消息），确保URL中含有 <code style="background: #f0f0f0; padding: 2px 4px; border-radius: 3px;">token=</code>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
+
