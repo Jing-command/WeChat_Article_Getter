@@ -827,7 +827,7 @@ async def run_download_async(request: DownloadRequest, token: str, cookies: str,
                 await state.broadcast_log(session_id, "[INFO] 检测到链接，正在从链接解析公众号信息...")
                 # 在线程池中运行
                 loop = asyncio.get_event_loop()
-                fakeid = await loop.run_in_executor(None, state.engine.extract_fakeid_from_url, request.url)
+                fakeid = await loop.run_in_executor(None, session.engine.extract_fakeid_from_url, request.url)
                 
                 if not fakeid:
                     # Fallback: 尝试从cookies中获取（仅当格式像__biz）
@@ -848,7 +848,7 @@ async def run_download_async(request: DownloadRequest, token: str, cookies: str,
                 await state.broadcast_log(session_id, f"[INFO] 检测到公众号名称，正在搜索: {request.url}")
                 # 在线程池中运行同步方法，避免阻塞事件循环
                 loop = asyncio.get_event_loop()
-                fakeid = await loop.run_in_executor(None, state.engine.search_account, request.url)
+                fakeid = await loop.run_in_executor(None, session.engine.search_account, request.url)
             
             if not fakeid:
                 await fail_task(session_id, "[ERROR] 无法找到目标公众号")
@@ -860,12 +860,12 @@ async def run_download_async(request: DownloadRequest, token: str, cookies: str,
                 await state.broadcast_log(session_id, f"[INFO] 正在获取 {request.start_date} 至 {request.end_date} 期间的文章...")
                 # 在线程池中运行
                 loop = asyncio.get_event_loop()
-                articles = await loop.run_in_executor(None, state.engine.get_articles_by_date, fakeid, request.start_date, request.end_date)
+                articles = await loop.run_in_executor(None, session.engine.get_articles_by_date, fakeid, request.start_date, request.end_date)
             else:
                 await state.broadcast_log(session_id, f"[INFO] 正在获取最近 {request.count} 篇文章...")
                 # 在线程池中运行
                 loop = asyncio.get_event_loop()
-                articles = await loop.run_in_executor(None, state.engine.get_articles, fakeid, request.count)
+                articles = await loop.run_in_executor(None, session.engine.get_articles, fakeid, request.count)
             
             if not articles:
                 await fail_task(session_id, "[ERROR] 未获取到文章列表")
@@ -878,7 +878,7 @@ async def run_download_async(request: DownloadRequest, token: str, cookies: str,
             await state.broadcast_log(session_id, "[INFO] 正在获取文章元数据...")
             # 在线程池中运行
             loop = asyncio.get_event_loop()
-            article_info = await loop.run_in_executor(None, state.engine.fetch_article_metadata, request.url)
+            article_info = await loop.run_in_executor(None, session.engine.fetch_article_metadata, request.url)
             
             if not article_info:
                 await fail_task(session_id, "[ERROR] 无法解析文章信息，请检查链接是否正确")
@@ -889,7 +889,7 @@ async def run_download_async(request: DownloadRequest, token: str, cookies: str,
         
         # 下载内容 - 在线程池中运行
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, state.engine.download_articles_content, articles)
+        await loop.run_in_executor(None, session.engine.download_articles_content, articles)
         
         await state.broadcast_log(session_id, f"[SUCCESS] 任务完成！")
         if request.batch_mode:
